@@ -11,6 +11,22 @@ tei_ns = "{http://www.tei-c.org/ns/1.0}"
 xml_ns = "{http://www.w3.org/XML/1998/namespace}"
 xml_parser = etree.XMLParser(remove_blank_text=True)
 
+def extract_page_number(link):
+    if link == None:
+        return None
+    try:
+        return int(link[-13:-10])+1
+    except ValueError:
+        try:
+            match = re.search(r"#page=(\d{1,3})" , link)
+        
+            if match:
+                page_number = match.group(1)
+                return page_number
+        except ValueError: 
+            print("No page number found")
+            return None
+
 def extract_text_from_pages(file_path, num_pages=1):
     """
     Parses an XML file, extracts a random sample of pages based on <pb> tags, and retrieves text content line by line.
@@ -29,6 +45,7 @@ def extract_text_from_pages(file_path, num_pages=1):
     # Initialize variables to keep track of the current page content
     current_page_link = None
     page_lines = []
+    page_elems = []
 
     # Traverse XML and find 'pb' elements (page breaks) and text nodes
     for elem in root.iter():
@@ -50,6 +67,8 @@ def extract_text_from_pages(file_path, num_pages=1):
     # Add the last page if it exists
     if current_page_link and page_lines:
         pages.append({"page_link": current_page_link, "lines": list(zip(page_lines,page_elems))})
+    elif current_page_link== None:
+         pages.append({"page_link": None, "lines": list(zip(page_lines,page_elems))})
 
     # Randomly sample pages
     sampled_pages = random.sample(pages, min(len(pages), num_pages))
@@ -57,12 +76,14 @@ def extract_text_from_pages(file_path, num_pages=1):
     # Store each line of sampled pages with file information
     for page in sampled_pages:
         for tuple in page["lines"]:
+            page_number = extract_page_number(page["page_link"])
             results.append({
                 "id": tuple[1],
                 "file": file_path[3:],
-                "page_link": page["page_link"],
-                "page_number": int(page["page_link"][-13:-10])+1,
+                "page_link": [page["page_link"] + " " if page["page_link"] else None][0],
+                "page_number": page_number,
                 "marginal_text": 0.0,
+                "merged": 0.0,
                 "text_line": tuple[0]
                 
             })
@@ -70,7 +91,7 @@ def extract_text_from_pages(file_path, num_pages=1):
     return results
 
 
-def extract_files(base_folder,output_folder, start_year, end_year, files_per_folder=5):
+def extract_files(base_folder,output_folder, start_year, end_year, files_per_year=2):
     list_years = set(list(range(start_year , end_year)))
     results = []
     available_year = []
@@ -98,11 +119,11 @@ def extract_files(base_folder,output_folder, start_year, end_year, files_per_fol
         filter_files = [file for file in xml_files if file not in Unique_files]
 
         # If there are fewer XML files than requested, use all of them
-        if len(filter_files) < files_per_folder:
-            selected_files = filter_files[:files_per_folder]
+        if len(filter_files) < files_per_year:
+            selected_files = filter_files[:files_per_year]
         else:
             # Randomly select the specified number of XML files
-            selected_files = random.sample(filter_files, files_per_folder)
+            selected_files = random.sample(filter_files, files_per_year)
 
         Unique_files.update(selected_files)
 
@@ -118,7 +139,6 @@ def extract_files(base_folder,output_folder, start_year, end_year, files_per_fol
             shutil.copy2(source_path, dest_path)
 
             result = extract_text_from_pages(source_path)
-            print(result)
             print(f'File extracted from {folder_name} and name of the {file_name}')
             results.extend(result)
 
@@ -135,23 +155,23 @@ parser.add_argument("--start_year",type=int, help="The start year for the range 
 parser.add_argument("--end_year", type=int, help="The end year for the range (e.g., 1876)")
 parser.add_argument("--base_folder", type=str, default="file path", help="../riksdagen-records/data")
 parser.add_argument("--output_folder", type=str, default="file path", help="Main output folder for selected XML files")
-parser.add_argument("--files_per_folder", type=int, default=5, help="Number of files to randomly extract per folder")
+parser.add_argument("--files_per_year", type=int, default=5, help="Number of files to randomly extract per folder")
 parser.add_argument('--full_data', action='store_true', help="Get the full data set without further input.")
 
 # Parse arguments
 args = parser.parse_args()
 
 if args.full_data:
-    extract_files(args.base_folder, args.output_folder, 1867, 2022, args.files_per_folder)
+    extract_files(args.base_folder, args.output_folder, 1867, 2022, args.files_per_year)
 else:
     # Delete the output folder if it already exists
     if os.path.exists(args.output_folder) and os.path.isdir(args.output_folder):
         shutil.rmtree(args.output_folder)
     print(f"Deleted existing folder: {args.output_folder}")
-    extract_files(args.base_folder, args.output_folder, args.start_year, args.end_year, args.files_per_folder)
+    extract_files(args.base_folder, args.output_folder, args.start_year, args.end_year, args.files_per_year)
 
 # elif args.start_year is not None:
 #     end_year = args.start_year + 9
-#     extract_files(args.base_folder, args.start_year, end_year, args.files_per_folder)
+#     extract_files(args.base_folder, args.start_year, end_year, args.files_per_year)
 
 # Run the extraction function
