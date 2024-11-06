@@ -10,6 +10,7 @@ import pandas as pd
 tei_ns = "{http://www.tei-c.org/ns/1.0}"
 xml_ns = "{http://www.w3.org/XML/1998/namespace}"
 xml_parser = etree.XMLParser(remove_blank_text=True)
+random.seed(42)
 
 def extract_page_number(link):
     if link == None:
@@ -91,15 +92,22 @@ def extract_text_from_pages(file_path, num_pages=1):
     return results
 
 
-def extract_files(base_folder,output_folder, start_year, end_year, files_per_year=2):
-    list_years = set(list(range(start_year , end_year)))
+def extract_files(base_folder,output_folder, start_year, end_year, files_per_decade):
+    decades = sorted({year // 10 * 10 for year in range(start_year, end_year + 1)})
+    list_years = set(list(range(start_year , end_year+1)))
     results = []
     available_year = []
 
-    for folder in os.listdir(base_folder):
-        if folder[:4].isdigit():
-            if int(folder[:4]) in list_years:
-                available_year.append(folder)
+    #for folder in os.listdir(base_folder):
+        #if folder[:4].isdigit():
+    for decade_start  in decades:
+        decade_end = min(decade_start + 9, end_year)
+        years_in_decade = [folder for folder in os.listdir(base_folder)
+                if folder[:4].isdigit() and int(folder[:4]) in range(decade_start, decade_end + 1) and int(folder[:4]) in list_years]
+        sampled_years = random.sample(years_in_decade, min(len(years_in_decade), files_per_decade))
+        available_year.extend(sampled_years)
+            #if int(folder[:4]) in list_years:
+            #    available_year.append(folder)
 
     Unique_files = set()
 
@@ -119,11 +127,11 @@ def extract_files(base_folder,output_folder, start_year, end_year, files_per_yea
         filter_files = [file for file in xml_files if file not in Unique_files]
 
         # If there are fewer XML files than requested, use all of them
-        if len(filter_files) < files_per_year:
-            selected_files = filter_files[:files_per_year]
+        if len(filter_files) < 1:
+            selected_files = filter_files[:1]
         else:
             # Randomly select the specified number of XML files
-            selected_files = random.sample(filter_files, files_per_year)
+            selected_files = random.sample(filter_files, 1)
 
         Unique_files.update(selected_files)
 
@@ -155,23 +163,23 @@ parser.add_argument("--start_year",type=int, help="The start year for the range 
 parser.add_argument("--end_year", type=int, help="The end year for the range (e.g., 1876)")
 parser.add_argument("--base_folder", type=str, default="file path", help="../riksdagen-records/data")
 parser.add_argument("--output_folder", type=str, default="file path", help="Main output folder for selected XML files")
-parser.add_argument("--files_per_year", type=int, default=5, help="Number of files to randomly extract per folder")
+parser.add_argument("--files_per_decade", type=int, default=5, help="Number of files to randomly extract per folder")
 parser.add_argument('--full_data', action='store_true', help="Get the full data set without further input.")
 
 # Parse arguments
 args = parser.parse_args()
 
 if args.full_data:
-    extract_files(args.base_folder, args.output_folder, 1867, 2022, args.files_per_year)
+    extract_files(args.base_folder, args.output_folder, 1867, 2022, args.files_per_decade)
 else:
     # Delete the output folder if it already exists
     if os.path.exists(args.output_folder) and os.path.isdir(args.output_folder):
         shutil.rmtree(args.output_folder)
     print(f"Deleted existing folder: {args.output_folder}")
-    extract_files(args.base_folder, args.output_folder, args.start_year, args.end_year, args.files_per_year)
+    extract_files(args.base_folder, args.output_folder, args.start_year, args.end_year, args.files_per_decade)
 
 # elif args.start_year is not None:
 #     end_year = args.start_year + 9
-#     extract_files(args.base_folder, args.start_year, end_year, args.files_per_year)
+#     extract_files(args.base_folder, args.start_year, end_year, args.files_per_decade)
 
 # Run the extraction function
