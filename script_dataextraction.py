@@ -14,19 +14,17 @@ random.seed(42)
 
 def extract_page_number(link):
     if link == None:
+        print("No link")
         return None
-    try:
-        return int(link[-13:-10])+1
-    except ValueError:
-        try:
-            match = re.search(r"#page=(\d{1,3})" , link)
-        
-            if match:
-                page_number = match.group(1)
-                return page_number
-        except ValueError: 
-            print("No page number found")
-            return None
+    else:
+        match = re.search(r"#page=(\d{1,3})" , link)
+        if match:
+            page_number = match.group(1)
+            return page_number
+        else:
+            match = re.search(r"(\d{3})\.jp2/_view",link)
+            page_number = int(match.group(1))+1
+            return page_number
 
 def extract_text_from_pages(file_path, num_pages=1):
     """
@@ -56,7 +54,7 @@ def extract_text_from_pages(file_path, num_pages=1):
             current_page_link = elem.attrib.get("facs")  # Page identifier
             page_lines = []  # Reset lines for the new page
             page_elems = []
-            
+
         # If the element is a paragraph or segment, add each line to the current page
         elif elem.tag in {f"{tei_ns}u", f"{tei_ns}seg", f"{tei_ns}note"}:
             elem_id = elem.attrib.get(f"{xml_ns}id")
@@ -70,14 +68,14 @@ def extract_text_from_pages(file_path, num_pages=1):
         pages.append({"page_link": current_page_link, "lines": list(zip(page_lines,page_elems))})
     elif current_page_link== None:
          pages.append({"page_link": None, "lines": list(zip(page_lines,page_elems))})
-
+    #print(pages)
     # Randomly sample pages
     sampled_pages = random.sample(pages, min(len(pages), num_pages))
 
     # Store each line of sampled pages with file information
     for page in sampled_pages:
+        page_number = extract_page_number(page["page_link"])
         for tuple in page["lines"]:
-            page_number = extract_page_number(page["page_link"])
             results.append({
                 "id": tuple[1],
                 "file": file_path[3:],
@@ -86,7 +84,7 @@ def extract_text_from_pages(file_path, num_pages=1):
                 "marginal_text": 0.0,
                 "merged": 0.0,
                 "text_line": tuple[0]
-                
+
             })
 
     return results
@@ -103,8 +101,8 @@ def extract_files(base_folder,output_folder, start_year, end_year, files_per_dec
     for decade_start  in decades:
         decade_end = min(decade_start + 9, end_year)
         years_in_decade = [folder for folder in os.listdir(base_folder)
-                if folder[:4].isdigit() and int(folder[:4]) in range(decade_start, decade_end + 1) and int(folder[:4]) in list_years]
-        sampled_years = random.sample(years_in_decade, min(len(years_in_decade), files_per_decade))
+                if folder[:4].isdigit() and int(folder[:4]) in range(decade_start, decade_end + 1) and int(folder[:4]) in list_years and int(folder[:4]) not in range(1990,1994)]
+        sampled_years = random.choices(years_in_decade, k=files_per_decade)
         available_year.extend(sampled_years)
             #if int(folder[:4]) in list_years:
             #    available_year.append(folder)
