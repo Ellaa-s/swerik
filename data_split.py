@@ -3,7 +3,7 @@ import os
 import numpy as np
 
 #loading the data 
-data_main = pd.read_csv("/home/nikitha/swerik/data.csv")
+data_main = pd.read_csv("/home/nikitha/swerik/output.csv")
 
 #splitting the data into 3 parts
 split_value = np.array_split(data_main,3)
