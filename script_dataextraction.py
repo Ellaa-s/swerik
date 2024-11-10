@@ -50,6 +50,11 @@ def extract_text_from_pages(file_path, num_pages=1):
     for elem in root.iter():
         # If element is a page marker (<pb>), save the previous page's content
         if elem.tag == f"{tei_ns}pb":
+            
+            # Add the just iterated page of the record
+            if current_page_link and page_lines:
+                pages.append({"page_link": current_page_link, "lines": list(zip(page_lines,page_elems))})
+            
             # Start a new page
             current_page_link = elem.attrib.get("facs")  # Page identifier
             page_lines = []  # Reset lines for the new page
@@ -63,11 +68,9 @@ def extract_text_from_pages(file_path, num_pages=1):
                 page_lines.append(text)
                 page_elems.append(elem_id)
 
-    # Add the last page if it exists
+    # Add the last page of the record
     if current_page_link and page_lines:
-        pages.append({"page_link": current_page_link, "lines": list(zip(page_lines,page_elems))})
-    elif current_page_link== None:
-         pages.append({"page_link": None, "lines": list(zip(page_lines,page_elems))})
+        pages.append({"page_link": current_page_link, "lines": list(zip(page_lines, page_elems))})
     #print(pages)
     # Randomly sample pages
     sampled_pages = random.sample(pages, min(len(pages), num_pages))
@@ -103,6 +106,7 @@ def extract_files(base_folder,output_folder, start_year, end_year, files_per_dec
         years_in_decade = [folder for folder in os.listdir(base_folder)
                 if folder[:4].isdigit() and int(folder[:4]) in range(decade_start, decade_end + 1) and int(folder[:4]) in list_years and int(folder[:4]) not in range(1990,1994)]
         sampled_years = random.choices(years_in_decade, k=files_per_decade)
+        print (sampled_years)
         available_year.extend(sampled_years)
             #if int(folder[:4]) in list_years:
             #    available_year.append(folder)
@@ -149,7 +153,7 @@ def extract_files(base_folder,output_folder, start_year, end_year, files_per_dec
             results.extend(result)
 
         df = pd.DataFrame(results)
-        df.to_csv('output.csv', index=False)
+        df.to_csv('data.csv', index=False)
 
         print(f"Copied {len(selected_files)} files from {year_folder} to {year_output_folder}")
 
