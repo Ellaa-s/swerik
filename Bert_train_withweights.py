@@ -18,7 +18,7 @@ def encode(df, tokenizer):
     # For every sentence...
     for ix, row in df.iterrows():
         encoded_dict = tokenizer.encode_plus(
-                            row['text'],
+                            row['text_line'],
                             add_special_tokens = True,
                             max_length = 128,
                             truncation=True,
@@ -149,10 +149,12 @@ def main(args):
                             batch_size = batch_size,
                             num_workers = num_workers)
     
-    # Assigning class weights
+    # Assigning class weights 
     class_counts = train_data['marginal_text'].value_counts().to_dict()
     total_samples = sum(class_counts.values())
     class_weights = {label: total_samples/count for label, count in class_counts.items()}
+    print("Class Weights: ", class_weights)
+
     class_weights_tensor = torch.tensor([class_weights[0], class_weights[1]]).to(device)
 
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),
@@ -188,7 +190,8 @@ def main(args):
                         token_type_ids=None,
                         attention_mask=input_mask,
                         labels=labels)
-            loss = output.loss
+           # loss = output.loss
+            loss = torch.nn.functional.cross_entropy(output.logits, labels, weight=class_weights_tensor)
             train_loss += loss.item()
 
             loss.backward()
