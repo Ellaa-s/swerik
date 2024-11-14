@@ -97,8 +97,8 @@ def get_metrics(labels, preds):
   f_1 = F1(pre, rec)
   return acc, pre, rec, f_1
 
-n_epochs = 1
-batch_size = 16
+n_epochs = 3
+batch_size = 8
 num_workers = 2
 learning_rate = 0.00003
 
@@ -149,7 +149,7 @@ def main(args):
                             batch_size = batch_size,
                             num_workers = num_workers)
     
-    # Assigning class weights 
+    # Assigning class weights
     class_counts = train_data['marginal_text'].value_counts().to_dict()
     total_samples = sum(class_counts.values())
     class_weights = {label: total_samples/count for label, count in class_counts.items()}
@@ -190,7 +190,6 @@ def main(args):
                         token_type_ids=None,
                         attention_mask=input_mask,
                         labels=labels)
-           # loss = output.loss
             loss = torch.nn.functional.cross_entropy(output.logits, labels, weight=class_weights_tensor)
             train_loss += loss.item()
 
@@ -273,3 +272,4 @@ if __name__ == "__main__":
     parser.add_argument("--save_predictions", action="store_true", help="Set this flag to save predictions to csv.")
     args = parser.parse_args()
     main(args)
+
