@@ -28,7 +28,6 @@ def get_max_index(l, elem):
         return indices[0]
     else:
         previous_elements = elem.xpath("preceding::*[local-name() = 'note' or local-name() = 'seg' or local-name() = 'pb']")
-        #print(previous_elements)
         for i, e in enumerate(reversed(previous_elements)):
             if e.tag[-2:] == 'pb':
                 page_position = i
