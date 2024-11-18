@@ -8,7 +8,7 @@ def extract_decade(file_path):
     return (year // 10) * 10 
 
 # Load your sampled dataset
-data = pd.read_csv("data_annotated.csv")
+data = pd.read_csv("./data/data_annotated.csv")
 data['decade'] = data['file'].apply(extract_decade)
 
 # Get a dict of all files in the dataset by decade
