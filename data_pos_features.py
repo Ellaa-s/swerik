@@ -2,7 +2,7 @@ from pyriksdagen.download import LazyArchive
 from pyriksdagen.utils import XML_NS
 import argparse
 import progressbar
-from get_positional_features import get_page_position_information
+from get_positional_features import get_page_position_information, get_protocol_information
 from alto import parse_file
 from lxml import etree
 import pandas as pd
@@ -68,8 +68,10 @@ def main(args):
     
     # key we want to add to our csv later
     keys_to_add = ["posLeft", "posUpper","posRight", "posLower"]
+    prot_keys_to_add = ["year", "relative_page_number","even_page", "second_chamber", "unicameral"]
 
-    # I only want to do that for the package ids, which correlate to my file paths:
+
+    # loop over the files in the input data
     for file_path, kb_path in progressbar.progressbar(zip(file_paths, kb_paths)):
         # get page_name to reach the page_name.xml alto file 
         page_name = get_filename_from_filepath(kb_path)
@@ -100,11 +102,12 @@ def main(args):
             if elem.tag in {f"{tei_ns}seg", f"{tei_ns}note"}:
                 #get the positional features
                 out_pos = get_page_position_information(elem, alto, elem_type = None)
+                prot_inf = get_protocol_information(elem)
                 #print(out_pos)
                 for key in keys_to_add:
-                    #our_data[key] = out_pos[key]
                     our_data.loc[our_data['id'] == elem_id, key] = out_pos[key]
-                    
+                for prot_key in prot_keys_to_add:
+                    our_data.loc[our_data['id'] == elem_id, prot_key] = prot_inf[prot_key]
         our_data.to_csv(args.output_file, index=False) #"./swerik/data/test_pos_set.csv"
 
 if __name__ == "__main__":
