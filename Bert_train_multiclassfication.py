@@ -15,7 +15,7 @@ def encode(df, tokenizer):
 
     for ix, row in df.iterrows():
         encoded_dict = tokenizer.encode_plus(
-            row['text'],
+            row['text_line'],
             add_special_tokens=True,
             max_length=128,
             truncation=True,
@@ -143,7 +143,7 @@ def get_metrics(labels, preds):
   f_1 = F1(pre, rec)
   return acc, pre, rec, f_1
 
-n_epochs = 1
+n_epochs = 3
 batch_size = 16
 num_workers = 4
 learning_rate = 0.0003
@@ -308,7 +308,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data_folder", type = str, default = './data')
     parser.add_argument("--save_folder", type = str, default = "./output")
-    #parser.add_argument("--cuda", action="store_true", help="Set this flag to run with cuda.")
+    parser.add_argument("--cuda", action="store_true", help="Set this flag to run with cuda.")
     parser.add_argument("--save_predictions", action="store_true", help="Set this flag to save predictions to csv.")
     args = parser.parse_args()
     main(args)

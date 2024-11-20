@@ -97,7 +97,7 @@ def get_metrics(labels, preds):
   f_1 = F1(pre, rec)
   return acc, pre, rec, f_1
 
-n_epochs = 3
+n_epochs = 5
 batch_size = 8
 num_workers = 2
 learning_rate = 0.00003
