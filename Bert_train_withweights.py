@@ -97,7 +97,7 @@ def get_metrics(labels, preds):
   f_1 = F1(pre, rec)
   return acc, pre, rec, f_1
 
-n_epochs = 5
+n_epochs = 2
 batch_size = 8
 num_workers = 2
 learning_rate = 0.00003
@@ -123,9 +123,9 @@ def main(args):
                                                             id2label = id2label,
                                                             label2id = label2id).to(device)
     
-    train_data = pd.read_csv(f'{args.data_folder}/train_set.csv')
-    val_data = pd.read_csv(f'{args.data_folder}/val_set.csv')
-    test_data = pd.read_csv(f'{args.data_folder}/test_set.csv')
+    train_data = pd.read_csv(f'{args.data_folder}/train_data_stratified.csv')
+    val_data = pd.read_csv(f'{args.data_folder}/val_set_stratified.csv')
+    test_data = pd.read_csv(f'{args.data_folder}/test_set_stratified.csv')
 
     train_input_ids, train_attention_masks, train_labels = encode(train_data, tok)
     train_dataset = TensorDataset(train_input_ids, train_attention_masks, train_labels)
@@ -266,7 +266,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data_folder", type = str, default = './data')
+    parser.add_argument("--data_folder", type = str, default = './data_stratified_sampling')
     parser.add_argument("--save_folder", type = str, default = "./output")
     parser.add_argument("--cuda", action="store_true", help="Set this flag to run with cuda.")
     parser.add_argument("--save_predictions", action="store_true", help="Set this flag to save predictions to csv.")
