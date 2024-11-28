@@ -6,7 +6,7 @@ from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import pandas as pd
 from torch.utils.data import TensorDataset, DataLoader
-
+import numpy as np
 
 # Check if evaluation is correct
 def evaluate(model, loader, device):
@@ -23,7 +23,8 @@ def evaluate(model, loader, device):
         #     print(f"Output: {output}")
         #     continue
         # Compute loss
-        loss_fn = torch.nn.BCEWithLogitsLoss()    
+        loss_fn = torch.nn.BCEWithLogitsLoss()  
+        labels = labels.float()  
         loss = loss_fn(output, labels)
         # Check if loss is NaN
         # if torch.isnan(loss).any() or torch.isinf(loss).any():
@@ -33,7 +34,8 @@ def evaluate(model, loader, device):
         #     continue
         total_loss += loss.item()
         # Compute predictions
-        preds_batch = torch.argmax(output, axis=1)
+        #preds_batch = torch.argmax(output, axis=1)
+        preds_batch = (output > 0.5).long().squeeze()  # Converts probabilities to labels (0 or 1)
         batch_acc = torch.mean((preds_batch == labels).float())
         accuracy.append(batch_acc)
 
@@ -50,23 +52,27 @@ def get_predictions(model, loader, device):
         # Forward pass
         with torch.no_grad():  # Disable gradient computation for evaluation
             output = model(inputs)
-        preds_batch = torch.argmax(output, axis=1)
-        preds.extend(preds_batch.tolist())
+        print(f"output: {output}")
+        preds_batch = (output > 0.0).long().squeeze()
+        #preds_batch = torch.argmax(output, axis=1)
+        print(f"pres_batch {preds_batch}")
+        #preds.extend(preds_batch.tolist())
+        preds.append(preds_batch)
         logits.extend(output.tolist())
     
     return preds, logits
 
 def precision(labels, preds):
-  return sum((labels == 1.0) & (preds == 1.0)) / sum(preds == 1.0)
+  return np.sum((labels == 1.0) & (preds == 1.0)) / np.sum(preds == 1.0)
 
 def recall(labels, preds):
-  return sum((labels == 1.0) & (preds == 1.0)) / sum(labels == 1.0)
+  return np.sum((labels == 1.0) & (preds == 1.0)) / np.sum(labels == 1.0)
 
 def F1(pre, rec):
   return 2/((1/pre)+(1/rec))
 
 def accuracy(labels, preds):
-  return sum(labels == preds) / len(labels)
+  return np.sum(labels == preds) / len(labels)
 
 def get_metrics(labels, preds):
   acc = accuracy(labels, preds)
@@ -76,7 +82,7 @@ def get_metrics(labels, preds):
   return acc, pre, rec, f_1
 
 n_epochs = 1
-batch_size = 2
+batch_size = 8
 num_workers = 2
 learning_rate = 0.00000003
 
@@ -100,9 +106,10 @@ class NeuralNetwork(nn.Module):
         )
 
     def forward(self, x):
+        #print(f"before input layer: {x}")
         x = self.flatten(x)
         logits = self.linear_relu_stack(x)
-        return logits
+        return logits.squeeze(1)
 class PositionalFFNN(nn.Module):
     def __init__(self, input_dim=9, hidden_dim=180, num_hidden_layers=4):
 
@@ -185,21 +192,27 @@ def main(args):
         device = 'cuda'
     else:
         device = 'cpu'
-        
+    
+    pos_features = ['posLeft', 'posUpper', 'posRight', 'posLower', "year", "relative_page_number","even_page", "second_chamber", "unicameral"]
     # Load your data
     train_data = pd.read_csv(f'{args.data_folder}/train_pos_set.csv')
     val_data = pd.read_csv(f'{args.data_folder}/val_pos_set.csv')
     test_data = pd.read_csv(f'{args.data_folder}/test_pos_set.csv')
     
+    train_data = train_data.dropna(subset=pos_features)
+    test_data = test_data.dropna(subset=pos_features)
+    val_data = val_data.dropna(subset=pos_features)
+
     # Small set just to test if the script is running or not
     train_data=train_data.iloc[:100,:]
     test_data=train_data.iloc[:15,:]
     val_data=val_data.iloc[:15,:]
-    
+            
+        
     train_dataset = create_tensordataset(train_data)
     test_dataset = create_tensordataset(test_data)
     val_dataset = create_tensordataset(val_data)
-    print(train_dataset[0])
+    #print(f"first row of trian data set after transforming it into tensors: {train_dataset[0]}")
     
     train_loader = DataLoader(train_dataset,
                             shuffle = True,
@@ -223,7 +236,7 @@ def main(args):
     val_losses = []
     best_val_loss = float('inf')
     #best_model_state_dict = {}
-    #best_model_state_dict = model.state_dict()
+    best_model_state_dict = model.state_dict()
 
     count = 0
     for epoch in range(n_epochs):
@@ -236,18 +249,16 @@ def main(args):
 
             # Extract the features and labels from the batch
             features, labels = batch  # Assuming `train_loader` gives you features and labels
-            print(f"features {features}")
-            print(F"labels {labels}")
+
             
             # Move data to the device (GPU/CPU)
+            model = model.to(device)
             features = features.to(device)
             labels = labels.to(device)
-
-            print(f"features2 {features, features.shape}")
-            print(F"labels2 {labels}")
+            
             # Forward pass: get predictions from the model
             predictions = model(features)
-            print(f"predictions {predictions}")
+            print(f"predictions that come out of the model {predictions}")
             # if torch.isnan(predictions).any():
             #     print("Predictions contain NaN!")
             # Calculate the loss
@@ -292,20 +303,23 @@ def main(args):
     train_preds, train_logits = get_predictions(model, train_eval_loader, device)
     #print(f"train logits: {train_logits}")
     train_preds = pd.Series(train_preds)
-    train_logits1 = pd.Series([x[0] for x in train_logits])
-    train_logits2 = pd.Series([x[1] for x in train_logits])
+    train_preds = [x.item() for sublist in train_preds for x in sublist]
+    # train_logits1 = pd.Series([x[0] for x in train_logits])
+    # train_logits2 = pd.Series([x[1] for x in train_logits])
     train_labels = train_data['marginal_text']
     
     val_preds, val_logits = get_predictions(model, val_loader, device)
     val_preds = pd.Series(val_preds)
-    val_logits1 = pd.Series([x[0] for x in val_logits])
-    val_logits2 = pd.Series([x[1] for x in val_logits])
+    val_preds = [x.item() for sublist in val_preds for x in sublist]
+    # val_logits1 = pd.Series([x[0] for x in val_logits])
+    # val_logits2 = pd.Series([x[1] for x in val_logits])
     val_labels = val_data['marginal_text']
     
     test_preds, test_logits = get_predictions(model, test_loader, device)
     test_preds = pd.Series(test_preds)
-    test_logits1 = pd.Series([x[0] for x in test_logits])
-    test_logits2 = pd.Series([x[1] for x in test_logits])
+    test_preds = [x.item() for sublist in test_preds for x in sublist]
+    # test_logits1 = pd.Series([x[0] for x in test_logits])
+    # test_logits2 = pd.Series([x[1] for x in test_logits])
     test_labels = test_data['marginal_text']
     
     if args.save_predictions:
@@ -313,17 +327,20 @@ def main(args):
         val_data['preds'] = val_preds
         test_data['preds'] = test_preds
 
-        train_data['logits1'] = train_logits1
-        val_data['logits1'] = val_logits1
-        test_data['logits1'] = test_logits1
-        train_data['logits2'] = train_logits2
-        val_data['logits2'] = val_logits2
-        test_data['logits2'] = test_logits2
+        # train_data['logits1'] = train_logits1
+        # val_data['logits1'] = val_logits1
+        # test_data['logits1'] = test_logits1
+        # train_data['logits2'] = train_logits2
+        # val_data['logits2'] = val_logits2
+        # test_data['logits2'] = test_logits2
         
         train_data.to_csv(f'{args.save_folder}/train_predictions.csv', index=False) 
         val_data.to_csv(f'{args.save_folder}/val_predictions.csv', index=False) 
         test_data.to_csv(f'{args.save_folder}/test_predictions.csv', index=False) 
     
+    print(f"train labels {train_labels}")
+    print(f"train predictions {train_preds}")
+
     print(f'train metrics: \n {get_metrics(train_labels, train_preds)}')
     print(f'val metrics: \n {get_metrics(val_labels, val_preds)}')
     print(f'test metrics: \n {get_metrics(test_labels, test_preds)}')
