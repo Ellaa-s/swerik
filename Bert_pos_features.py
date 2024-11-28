@@ -1,58 +1,51 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from transformers import BertModel
 import argparse
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import pandas as pd
+import numpy as np
 from torch.utils.data import TensorDataset, DataLoader
 
 
 # Check if evaluation is correct
 def evaluate(model, loader, device):
-    total_loss, accuracy = 0.0, []
+    loss, accuracy = 0.0, []
     model.eval()
     for batch in tqdm(loader, total=len(loader)):
-        inputs = batch[0].to(device)
-        labels = batch[1].to(device)
-        with torch.no_grad():
-            output = model(inputs)
-        # Check for NaN or Inf in the model output
-        # if torch.isnan(output).any() or torch.isinf(output).any():
-        #     print("NaN or Inf detected in model output!")
-        #     print(f"Output: {output}")
-        #     continue
-        # Compute loss
-        loss_fn = torch.nn.BCEWithLogitsLoss()    
-        loss = loss_fn(output, labels)
-        # Check if loss is NaN
-        # if torch.isnan(loss).any() or torch.isinf(loss).any():
-        #     print("NaN or Inf loss detected")
-        #     print(f"Output: {output}")
-        #     print(f"Labels: {labels}")
-        #     continue
-        total_loss += loss.item()
-        # Compute predictions
-        preds_batch = torch.argmax(output, axis=1)
+        input_ids = batch[0].to(device)
+        input_mask = batch[1].to(device)
+        labels = batch[2].to(device)
+        output = model(input_ids,
+            token_type_ids=None,
+            attention_mask=input_mask,
+            labels=labels)
+        loss += output.loss.item()
+        preds_batch = torch.argmax(output.logits, axis=1)
         batch_acc = torch.mean((preds_batch == labels).float())
         accuracy.append(batch_acc)
 
     accuracy = torch.mean(torch.tensor(accuracy))
-    return total_loss, accuracy
+    return loss, accuracy
 
 def get_predictions(model, loader, device):
     preds = []
     logits = []
     model.eval()
     for batch in tqdm(loader, total=len(loader)):
-        inputs = batch[0].to(device)
-        #labels = batch[1].to(device)
-        # Forward pass
-        with torch.no_grad():  # Disable gradient computation for evaluation
-            output = model(inputs)
-        preds_batch = torch.argmax(output, axis=1)
+        input_ids = batch[0].to(device)
+        input_mask = batch[1].to(device)
+        labels = batch[2].to(device)
+        output = model(input_ids,
+                       token_type_ids=None,
+                       attention_mask=input_mask,
+                       labels=labels)
+        preds_batch = torch.argmax(output.logits, axis=1)
+        logits_batch = output.logits
         preds.extend(preds_batch.tolist())
-        logits.extend(output.tolist())
+        logits.extend(logits_batch.tolist())
     
     return preds, logits
 
@@ -76,9 +69,9 @@ def get_metrics(labels, preds):
   return acc, pre, rec, f_1
 
 n_epochs = 1
-batch_size = 2
+batch_size = 16
 num_workers = 2
-learning_rate = 0.00000003
+learning_rate = 0.00003
 
 """
 Feedforward Neural Network for positional features.
@@ -87,22 +80,6 @@ Args:
     hidden_dim (int): Number of units in each hidden layer (default: 180).
     num_hidden_layers (int): Number of hidden layers (default: 4).
 """
-class NeuralNetwork(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.flatten = nn.Flatten()
-        self.linear_relu_stack = nn.Sequential(
-            nn.Linear(9, 180),
-            nn.ReLU(),
-            nn.Linear(180, 180),
-            nn.ReLU(),
-            nn.Linear(180, 1),
-        )
-
-    def forward(self, x):
-        x = self.flatten(x)
-        logits = self.linear_relu_stack(x)
-        return logits
 class PositionalFFNN(nn.Module):
     def __init__(self, input_dim=9, hidden_dim=180, num_hidden_layers=4):
 
@@ -110,24 +87,15 @@ class PositionalFFNN(nn.Module):
         
         # Input layer (maps 9 → 180)
         self.input_layer = nn.Linear(input_dim, hidden_dim)
-        nn.init.xavier_normal_(self.input_layer.weight)
-        nn.init.zeros_(self.input_layer.bias)
         
         # Hidden layers (4 layers, 180 → 180)
         self.hidden_layers = nn.ModuleList(
             [nn.Linear(hidden_dim, hidden_dim) for _ in range(num_hidden_layers)]
         )
         
-        for layer in self.hidden_layers:
-            nn.init.xavier_normal_(layer.weight)
-            nn.init.zeros_(layer.bias)
-            
         # GELU activation function
         self.activation = nn.GELU()
-
-        self.output_layer = nn.Linear(hidden_dim, 1) 
-        nn.init.xavier_normal_(self.output_layer.weight)
-        nn.init.zeros_(self.output_layer.bias)
+    
     """
     Forward pass of the positional feedforward neural network.
     Args:
@@ -136,24 +104,49 @@ class PositionalFFNN(nn.Module):
         torch.Tensor: Output tensor of shape (batch_size, hidden_dim).
     """  
     def forward(self, x):
-        if torch.isnan(x).any():
-            print("NaN detected before the first layer!")
         # Input layer
-        x = self.input_layer(x)
+        x = self.activation(self.input_layer(x))
         
         # Hidden layers
         for layer in self.hidden_layers:
             x = self.activation(layer(x))
-            if torch.isnan(x).any():
-                print(f"NaN detected after layer{layer}!")
         
-        # Output layer for training
-        x = self.output_layer(x)
-        if torch.isnan(x).any():
-            print("NaN detected at output layer!")
         return x
+    
 
-def create_tensordataset(dataset):
+class BERTWithPositionalFeatures(nn.Module):
+    def __init__(self, bert_model_name='KB/bert-base-swedish-cased'):
+        super(BERTWithPositionalFeatures, self).__init__()
+        self.bert = BertModel.from_pretrained(bert_model_name)
+        self.positional_ffnn = PositionalFFNN(input_dim=9, hidden_dim=180)
+        self.batch_norm = nn.BatchNorm1d(948)
+        self.classifier = nn.Sequential(
+            nn.Linear(948, 512),
+            nn.GELU(),
+            nn.Linear(512, 256),
+            nn.GELU(),
+            nn.Linear(256, 1)
+        )
+
+    def forward(self, text_input, text_attention_mask, positional_features):
+        # Textual data through BERT
+        bert_output = self.bert(input_ids=text_input, attention_mask=text_attention_mask)
+        # get pooled output from BERT 
+        pooled_output = bert_output.pooler_output  # Shape: (batch_size, 768)
+
+        # Positional data through FFNN
+        pos_output = self.positional_ffnn(positional_features)  # Shape: (batch_size, 180)
+
+        # Concatenate BERT and positional features
+        combined_output = torch.cat([pooled_output, pos_output], dim=1)  # Shape: (batch_size, 948)
+
+        # Batch normalization + classification
+        combined_output = self.batch_norm(combined_output)
+        logits = self.classifier(combined_output)
+
+        return logits
+    
+def create_pos_tensordataset(dataset):
     # Encode id column
     #label_encoder = LabelEncoder()
     #encoded_ids = label_encoder.fit_transform(dataset["id"])
@@ -195,12 +188,15 @@ def main(args):
     train_data=train_data.iloc[:100,:]
     test_data=train_data.iloc[:15,:]
     val_data=val_data.iloc[:15,:]
-    
-    train_dataset = create_tensordataset(train_data)
-    test_dataset = create_tensordataset(test_data)
-    val_dataset = create_tensordataset(val_data)
-    print(train_dataset[0])
-    
+  
+    train_dataset = create_pos_tensordataset(train_data)
+    test_dataset = create_pos_tensordataset(test_data)
+    val_dataset = create_pos_tensordataset(val_data)
+
+    # #train_dataset = TensorDataset(train_data["id"], train_data[num_features + boolean_features], train_data['marginal_text'])
+    # test_dataset = TensorDataset(test_data["id"].to_frame(), test_data[num_features + boolean_features], test_data['marginal_text'].to_frame())
+    # val_dataset = TensorDataset(val_data["id"], val_data[num_features + boolean_features], val_data['marginal_text'])
+
     train_loader = DataLoader(train_dataset,
                             shuffle = True,
                             batch_size = batch_size,
@@ -213,18 +209,16 @@ def main(args):
                             shuffle = False,
                             batch_size = batch_size,
                             num_workers = num_workers)
-    model = NeuralNetwork()
-    #model = PositionalFFNN(input_dim=9, hidden_dim=180, num_hidden_layers=4)
-    #optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),lr = learning_rate)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4, weight_decay=0.01)
-    criterion = nn.BCEWithLogitsLoss()
 
+    #model = PositionalFFNN(input_dim=9, hidden_dim=180, num_hidden_layers=4)
+    model = BERTWithPositionalFeatures(bert_model_name='KB/bert-base-swedish-cased')
+    optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),
+                                lr = learning_rate)
+    criterion = nn.BCEWithLogitsLoss()  # Loss for binary classification
+    
     train_losses = []
     val_losses = []
     best_val_loss = float('inf')
-    #best_model_state_dict = {}
-    #best_model_state_dict = model.state_dict()
-
     count = 0
     for epoch in range(n_epochs):
         print(f"Start epoch {epoch}!")
@@ -232,35 +226,25 @@ def main(args):
         model.train()
 
         for i, batch in enumerate(tqdm(train_loader, total = len(train_loader))):
-            optimizer.zero_grad()
+            model.zero_grad()
 
             # Extract the features and labels from the batch
             features, labels = batch  # Assuming `train_loader` gives you features and labels
-            print(f"features {features}")
-            print(F"labels {labels}")
-            
+
             # Move data to the device (GPU/CPU)
             features = features.to(device)
             labels = labels.to(device)
 
-            print(f"features2 {features, features.shape}")
-            print(F"labels2 {labels}")
             # Forward pass: get predictions from the model
-            predictions = model(features)
-            print(f"predictions {predictions}")
-            # if torch.isnan(predictions).any():
-            #     print("Predictions contain NaN!")
+            predictions = model(text_input, text_attention_mask, positional_features)
+
             # Calculate the loss
             # Assuming MSE for regression or CrossEntropy for classification
-            loss = criterion(predictions.squeeze(), labels.float())
-
+            loss = criterion(predictions, labels)
             train_loss += loss.item()
 
             # Backpropagation
             loss.backward()
-            # for param in model.parameters():
-            #     if torch.isnan(param.grad).any():
-            #         print("NaN in gradients!")
             optimizer.step()
 
         # Evaluation
@@ -290,7 +274,6 @@ def main(args):
                           batch_size = batch_size,
                           num_workers = num_workers)
     train_preds, train_logits = get_predictions(model, train_eval_loader, device)
-    #print(f"train logits: {train_logits}")
     train_preds = pd.Series(train_preds)
     train_logits1 = pd.Series([x[0] for x in train_logits])
     train_logits2 = pd.Series([x[1] for x in train_logits])
@@ -329,7 +312,7 @@ def main(args):
     print(f'test metrics: \n {get_metrics(test_labels, test_preds)}')
     
     # save model locally
-    torch.save(model.state_dict(),f'{args.save_folder}/network_pos_model')
+    model.save_pretrained(f'{args.save_folder}/Bert_with_pos_model')
 
     
 if __name__ == "__main__":
