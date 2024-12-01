@@ -27,12 +27,12 @@ def encode(df, tokenizer):
 
     input_ids = torch.cat(input_ids, dim=0)
     attention_masks = torch.cat(attention_masks, dim=0)
-    labels = torch.tensor(df['marginal_text'].tolist()).long()
+    labels = torch.tensor(df['final_target'].tolist()).long()
 
     return input_ids, attention_masks, labels
 
 def evaluate(model, loader, device):
-    loss, accuracy = 0.0, []
+    total_loss, accuracy = 0.0, []
     model.eval()
     for batch in tqdm(loader, total=len(loader)):
         input_ids = batch[0].to(device)
@@ -43,13 +43,15 @@ def evaluate(model, loader, device):
                            token_type_ids=None,
                            attention_mask=input_mask,
                            labels=labels)
-        loss += output.loss.item()
+        total_loss += output.loss.item()
         preds_batch = torch.argmax(output.logits, axis=1)
         batch_acc = torch.mean((preds_batch == labels).float())
         accuracy.append(batch_acc)
 
-    accuracy = torch.mean(torch.tensor(accuracy))
-    return loss, accuracy
+    # Average the loss across all batches
+    avg_loss = total_loss / len(loader)
+    avg_accuracy = torch.mean(torch.tensor(accuracy))
+    return avg_loss, avg_accuracy
 
 def get_predictions(model, loader, device):
     preds = []
@@ -70,13 +72,13 @@ def get_predictions(model, loader, device):
     return preds, logits
 
 def precision(labels, preds):
-    denominator = sum(preds == 1.0)
+    denominator = sum(preds == 1.0) + sum(preds == 2.0)
     if denominator == 0:
         return 0.0
     return sum((labels == 1.0) & (preds == 1.0)) / denominator
 
 def recall(labels, preds):
-    denominator = sum(labels == 1.0)
+    denominator = sum(labels == 1.0) + sum(labels == 2.0)
     if denominator == 0:
         return 0.0
     return sum((labels == 1.0) & (preds == 1.0)) / denominator
@@ -96,10 +98,10 @@ def get_metrics(labels, preds):
     f_1 = F1(pre, rec)
     return acc, pre, rec, f_1
 
-n_epochs = 1  # Increase the number of epochs to allow more learning
-batch_size = 16  # Reduce batch size to fit in GPU memory
+n_epochs = 3  # Increase the number of epochs to allow more learning
+batch_size = 8  # Reduce batch size to fit in GPU memory
 num_workers = 2  # Reduce number of workers to save memory
-learning_rate = 0.00001  # Use a common learning rate for transformers
+learning_rate = 0.000003  # Use a common learning rate for transformers
 
 def main(args):
     if args.cuda:
@@ -119,9 +121,9 @@ def main(args):
                                                                id2label=id2label,
                                                                label2id=label2id).to(device)
 
-    train_data = pd.read_csv(f'{args.data_folder}/train_set.csv')
-    val_data = pd.read_csv(f'{args.data_folder}/val_set.csv')
-    test_data = pd.read_csv(f'{args.data_folder}/test_set.csv')
+    train_data = pd.read_csv(f'multiclassification_data_set/train_data_multi.csv')
+    val_data = pd.read_csv(f'multiclassification_data_set/val_set_multi.csv')
+    test_data = pd.read_csv(f'multiclassification_data_set/test_set_multi.csv')
 
     train_input_ids, train_attention_masks, train_labels = encode(train_data, tok)
     train_dataset = TensorDataset(train_input_ids, train_attention_masks, train_labels)
@@ -147,7 +149,7 @@ def main(args):
 
     # Assign class weights to handle class imbalance
     class_weights = torch.tensor([1.0, 5.0, 2.0]).to(device)
-    loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
+    loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.4)
 
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),
                                   lr=learning_rate)
