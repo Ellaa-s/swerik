@@ -28,12 +28,16 @@ for _, row in data.iterrows():
         files_by_decade[decade].append(file_name)
 
 # Generate test_data
-test_files = {decade: files[-1] for decade, files in files_by_decade.items()}
-test_data = data[data['file'].isin(test_files.values())].reset_index(drop =True).drop(data.columns[-1], axis=1)
+test_files = []
+for i in range(1,4):
+    test_files.extend(files[-i] for files in files_by_decade.values())
+test_data = data[data['file'].isin(test_files)].reset_index(drop =True).drop(data.columns[-1], axis=1)
 
 # Generate val_data
-val_files = {decade: files[-2] for decade, files in files_by_decade.items()}
-val_data = data[data['file'].isin(val_files.values())].reset_index(drop =True).drop(data.columns[-1], axis=1)
+val_files = []
+for i in range(1,4):
+    val_files.extend(files[-i-3] for files in files_by_decade.values())
+val_data = data[data['file'].isin(val_files)].reset_index(drop =True).drop(data.columns[-1], axis=1)
 
 # Generate train data
 train_data = data[~data["file"].isin(test_data["file"]) & ~data["file"].isin(val_data["file"])].reset_index(drop =True).drop(data.columns[-1], axis=1)
