@@ -99,7 +99,7 @@ def get_metrics(labels, preds):
     f_1 = F1(pre, rec)
     return acc, pre, rec, f_1
 
-n_epochs = 5
+n_epochs = 2
 batch_size = 8
 num_workers = 2
 learning_rate = 0.00003
@@ -174,7 +174,7 @@ def main(args):
 
     count = 0
     for epoch in range(n_epochs):
-        print(f"Start epoch {epoch + 1} of {n_epochs}!")
+        print(f"Start epoch {epoch} of {n_epochs}!")
         train_loss = 0
         model.train()
 
