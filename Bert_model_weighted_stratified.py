@@ -100,7 +100,7 @@ def get_metrics(labels, preds):
     return acc, pre, rec, f_1
 
 n_epochs = 2
-batch_size = 8
+batch_size = 16
 num_workers = 2
 learning_rate = 0.00003
 weight_decay = 0.01  # Added weight decay for L2 regularization
