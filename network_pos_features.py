@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
-#import torch.nn.functional as F
 from sklearn.preprocessing import StandardScaler
 import argparse
 from tqdm import tqdm
@@ -118,7 +117,7 @@ def create_tensordataset(dataset):
     # Normalize positional features
     scaler = StandardScaler()
     scaler.fit(dataset[num_features])
-    dataset[num_features] = scaler.transform(dataset[num_features])
+    dataset.loc[:, num_features] = scaler.transform(dataset[num_features])
     
     # Convert to tensors
     #id_tensor = torch.tensor(encoded_ids, dtype=torch.long) 
@@ -270,7 +269,7 @@ def main(args):
     print(f'test metrics: \n {get_metrics(test_labels, test_preds)}')
     
     # save model locally
-    torch.save(model.state_dict(),f'{args.save_folder}/network_pos_model')
+    torch.save(model.state_dict(),f'{args.save_folder}/positional_ffnn.pt')
 
     
 if __name__ == "__main__":
