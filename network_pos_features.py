@@ -9,28 +9,25 @@ import numpy as np
 
 
 # Check if evaluation is correct
-def evaluate(model, loader, device):
+def evaluate(model, loader, device,pos_weight):
     loss, accuracy = 0.0, []
+    loss_function = torch.nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight]))
     model.eval()
-    for batch in tqdm(loader, total=len(loader)):
-        inputs = batch[0].to(device)
-        labels = batch[1].to(device)
-        #print(f"dtype input, labels: {type(inputs),type(labels)}")
-        with torch.no_grad():
+    with torch.no_grad():
+        for batch in tqdm(loader, total=len(loader)):
+            inputs = batch[0].to(device)
+            labels = batch[1].to(device)
             output = model(inputs)
-        #print(f"model output: {output}")
-        # Compute loss
-        loss_function = torch.nn.BCEWithLogitsLoss()  
-        loss += loss_function(output, labels)
-        #print(f"loss: {loss}")
-        # Compute predictions
-        #preds_batch = torch.argmax(output, axis=1)
-        preds_batch = (output > 0.0).long().squeeze()  # Converts probabilities to labels (0 or 1)
-        batch_acc = torch.mean((preds_batch == labels).float())
-        accuracy.append(batch_acc)
-
-    accuracy = torch.mean(torch.tensor(accuracy))
-    return loss, accuracy
+            # Compute loss
+            loss += loss_function(output, labels)
+            # Compute predictions
+            #preds_batch = torch.argmax(output, axis=1)
+            preds_batch = (torch.sigmoid(output) > 0.5).long()#(output > 0.0).long().squeeze()  # Converts probabilities to labels (0 or 1)
+            batch_acc = torch.mean((preds_batch == labels).float())
+            accuracy.append(batch_acc)
+    avg_loss = torch.mean(loss)
+    avg_accuracy = torch.mean(torch.tensor(accuracy))
+    return avg_loss, avg_accuracy
 
 def get_predictions(model, loader, device):
     preds = []
@@ -43,7 +40,7 @@ def get_predictions(model, loader, device):
         with torch.no_grad():  # Disable gradient computation for evaluation
             output = model(inputs)
         #print(f"output: {output}")
-        preds_batch = (output > 0.0).long()#.squeeze()
+        preds_batch = (torch.sigmoid(output) > 0.5).long() #(output > 0.0).long()#.squeeze()
         #preds_batch = torch.argmax(output, axis=1)
         #print(f"preds_batch {preds_batch}")
         preds.extend(preds_batch.tolist())
@@ -71,8 +68,8 @@ def get_metrics(labels, preds):
   f_1 = F1(pre, rec)
   return float(acc), float(pre), float(rec), float(f_1)
 
-n_epochs = 30
-batch_size = 8
+n_epochs = 50
+batch_size = 20
 num_workers = 2
 learning_rate = 0.00003
 
@@ -88,6 +85,10 @@ class PositionalFFNN(nn.Module):
             nn.GELU(),
             nn.Linear(180, 180),
             nn.GELU(),
+            # nn.Linear(180, 180),
+            # nn.GELU(),
+            # nn.Linear(180, 180),
+            # nn.GELU(),
             nn.Linear(180, 180),
             nn.GELU()
         )
@@ -106,10 +107,6 @@ class PositionalFFNN(nn.Module):
         return x
 
 def create_tensordataset(dataset):
-    # Encode id column
-    #label_encoder = LabelEncoder()
-    #encoded_ids = label_encoder.fit_transform(dataset["id"])
-    
     # Select positional features and labels
     num_features = ['posLeft', 'posUpper', 'posRight', 'posLower', "year", "relative_page_number"]
     boolean_features = ["even_page", "second_chamber", "unicameral"]
@@ -126,7 +123,7 @@ def create_tensordataset(dataset):
     labels_tensor = torch.tensor(dataset["marginal_text"], dtype=torch.float) 
     
     # Concatenate the tensors into a single input tensor (shape=(N, 1 + num_features + boolean_features))
-    input_tensor = torch.cat(( numerical_tensor, boolean_tensor), dim=1)  #id_tensor.unsqueeze(1),
+    input_tensor = torch.cat((numerical_tensor, boolean_tensor), dim=1)  #id_tensor.unsqueeze(1),
 
     # Create the TensorDatasets
     return TensorDataset(input_tensor, labels_tensor)
@@ -143,9 +140,10 @@ def main(args):
     val_data = pd.read_csv(f'{args.data_folder}/val_pos_set.csv')
     test_data = pd.read_csv(f'{args.data_folder}/test_pos_set.csv')
     
-    train_data = train_data.dropna(subset=pos_features)
-    test_data = test_data.dropna(subset=pos_features)
-    val_data = val_data.dropna(subset=pos_features)
+    train_data = train_data.dropna(subset=pos_features, ignore_index=True)
+    test_data = test_data.dropna(subset=pos_features, ignore_index=True)
+    val_data = val_data.dropna(subset=pos_features,ignore_index=True)
+    #dataset[num_features] = dataset[num_features].fillna(0)
 
     # Small set just to test if the script is running or not
     #train_data=train_data.iloc[:1000,:]
@@ -155,24 +153,29 @@ def main(args):
     train_dataset = create_tensordataset(train_data)
     test_dataset = create_tensordataset(test_data)
     val_dataset = create_tensordataset(val_data)
-    
+
     # Load data in pytorch
     train_loader = DataLoader(train_dataset,
                             shuffle = True,
                             batch_size = batch_size,
-                            num_workers = num_workers)
+                            num_workers = num_workers,
+                            drop_last=False)
     val_loader = DataLoader(val_dataset,
                             shuffle = False,
                             batch_size = batch_size,
-                            num_workers = num_workers)
+                            num_workers = num_workers,
+                            drop_last=False)
     test_loader = DataLoader(test_dataset,
                             shuffle = False,
                             batch_size = batch_size,
-                            num_workers = num_workers)
-    
+                            num_workers = num_workers,
+                            drop_last=False)
+
     model = PositionalFFNN()
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),lr = learning_rate)
-    criterion = nn.BCEWithLogitsLoss()
+    pos_weight = (np.sum(train_data["marginal_text"] == 0) / np.sum(train_data["marginal_text"] == 1))
+    print("weight", pos_weight)
+    criterion = nn.BCEWithLogitsLoss(pos_weight= torch.tensor([pos_weight]))
 
     train_losses = []
     val_losses = []
@@ -198,7 +201,6 @@ def main(args):
             
             # Forward pass: get predictions from the model
             predictions = model(features)
-            #print(f"predictions that come out of the model {predictions}")
             loss = criterion(predictions.squeeze(), labels.float())
             train_loss += loss.item()
 
@@ -207,7 +209,7 @@ def main(args):
             optimizer.step()
 
         # Evaluation
-        val_loss, val_accuracy = evaluate(model, val_loader, device)
+        val_loss, val_accuracy = evaluate(model, val_loader, device,pos_weight)
         
         # Save best model so far   
         if val_loss < best_val_loss:
@@ -229,13 +231,7 @@ def main(args):
     # use epoch with lowest validation loss
     model.load_state_dict(best_model_state_dict) 
     
-    train_eval_loader = DataLoader(train_dataset,
-                          shuffle = False,
-                          batch_size = batch_size,
-                          num_workers = num_workers)
-    
-    train_preds, train_logits = get_predictions(model, train_eval_loader, device)
-    #print(f"train logits: {train_logits}")
+    train_preds, train_logits = get_predictions(model, train_loader, device)
     train_preds = pd.Series(train_preds)
     train_labels = train_data['marginal_text'].astype(int).reset_index(drop=True)
     
@@ -260,16 +256,13 @@ def main(args):
         train_data.to_csv(f'{args.save_folder}/train_predictions.csv', index=False) 
         val_data.to_csv(f'{args.save_folder}/val_predictions.csv', index=False) 
         test_data.to_csv(f'{args.save_folder}/test_predictions.csv', index=False) 
-    
-    #print(f"train labels {train_labels}")
-    #print(f"train predictions {train_preds}")
 
     print(f'train metrics: \n {get_metrics(train_labels, train_preds)}')
     print(f'val metrics: \n {get_metrics(val_labels, val_preds)}')
     print(f'test metrics: \n {get_metrics(test_labels, test_preds)}')
     
     # save model locally
-    torch.save(model.state_dict(),f'{args.save_folder}/positional_ffnn.pt')
+    torch.save(model.state_dict(),f'{args.save_folder}/positional_ffnn_new.pt')
 
     
 if __name__ == "__main__":
