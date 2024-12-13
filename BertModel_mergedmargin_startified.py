@@ -1,27 +1,37 @@
 import pandas as pd
+import os
 import torch
 from torch.utils.data import TensorDataset, DataLoader
 from transformers import AutoModelForSequenceClassification, AutoTokenizer, get_linear_schedule_with_warmup
 from tqdm import tqdm
-import torch.nn.functional as F
 import argparse
+import torch.nn.functional as F
+
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def encode(df, tokenizer):
-    input_ids, attention_masks = [], []
+    # Tokenize all of the sentences and map the tokens to their word IDs.
+    input_ids = []
+    attention_masks = []
 
-    for _, row in df.iterrows():
+    # For every sentence...
+    for ix, row in df.iterrows():
         encoded_dict = tokenizer.encode_plus(
-            row['text_line'],
-            add_special_tokens=True,
-            max_length=128,
-            truncation=True,
-            padding='max_length',
-            return_attention_mask=True,
-            return_tensors='pt',
-        )
+                            row['text_line'],
+                            add_special_tokens=True,
+                            max_length=128,
+                            truncation=True,
+                            padding='max_length',
+                            return_attention_mask=True,
+                            return_tensors='pt',
+                       )
+
+        # Add the encoded sentence to the list.
         input_ids.append(encoded_dict['input_ids'])
         attention_masks.append(encoded_dict['attention_mask'])
 
+    # Convert the lists into tensors.
     input_ids = torch.cat(input_ids, dim=0)
     attention_masks = torch.cat(attention_masks, dim=0)
     labels = torch.tensor(df['merged'].tolist()).long()
@@ -36,7 +46,11 @@ def evaluate(model, loader, device, class_weights_tensor):
         input_mask = batch[1].to(device)
         labels = batch[2].to(device)
         with torch.no_grad():
-            output = model(input_ids, attention_mask=input_mask, labels=labels)
+            output = model(input_ids,
+                token_type_ids=None,
+                attention_mask=input_mask,
+                labels=labels)
+        # Use class weights during evaluation as well
         batch_loss = F.cross_entropy(output.logits, labels, weight=class_weights_tensor)
         loss += batch_loss.item()
         preds_batch = torch.argmax(output.logits, axis=1)
@@ -44,124 +58,212 @@ def evaluate(model, loader, device, class_weights_tensor):
         accuracy.append(batch_acc)
 
     accuracy = torch.mean(torch.tensor(accuracy))
-    return loss / len(loader), accuracy.item()
+    return loss / len(loader), accuracy
 
-def get_predictions_with_threshold(model, loader, device, threshold=0.5):
-    preds, logits = [], []
+def get_predictions(model, loader, device):
+    preds = []
+    logits = []
     model.eval()
     for batch in tqdm(loader, total=len(loader)):
         input_ids = batch[0].to(device)
         input_mask = batch[1].to(device)
+        labels = batch[2].to(device)
         with torch.no_grad():
-            output = model(input_ids, attention_mask=input_mask)
+            output = model(input_ids,
+                           token_type_ids=None,
+                           attention_mask=input_mask,
+                           labels=labels)
+        preds_batch = torch.argmax(output.logits, axis=1)
         logits_batch = output.logits
-        preds_batch = (F.softmax(logits_batch, dim=1)[:, 1] > threshold).long()
         preds.extend(preds_batch.tolist())
         logits.extend(logits_batch.tolist())
-
+    
     return preds, logits
 
 def precision(labels, preds):
-    tp = sum((labels == 1) & (preds == 1))
-    fp = sum(preds == 1) - tp
-    return tp / (tp + fp) if (tp + fp) > 0 else 0.0
+    return sum((labels == 1.0) & (preds == 1.0)) / sum(preds == 1.0)
 
 def recall(labels, preds):
-    tp = sum((labels == 1) & (preds == 1))
-    fn = sum(labels == 1) - tp
-    return tp / (tp + fn) if (tp + fn) > 0 else 0.0
+    return sum((labels == 1.0) & (preds == 1.0)) / sum(labels == 1.0)
 
 def F1(pre, rec):
-    return 2 * (pre * rec) / (pre + rec) if (pre + rec) > 0 else 0.0
+    return 2 / ((1 / pre) + (1 / rec))
 
 def accuracy(labels, preds):
     return sum(labels == preds) / len(labels)
 
 def get_metrics(labels, preds):
-    labels, preds = torch.tensor(labels), torch.tensor(preds)
     acc = accuracy(labels, preds)
     pre = precision(labels, preds)
     rec = recall(labels, preds)
     f_1 = F1(pre, rec)
     return acc, pre, rec, f_1
 
-def tune_threshold(model, loader, device, labels):
-    best_threshold, best_f1 = 0.5, 0.0
-    thresholds = [x / 100 for x in range(10, 90, 5)]
+n_epochs = 5
+batch_size = 16
+num_workers = 2
+learning_rate = 0.00003
+weight_decay = 0.01  # Added weight decay for L2 regularization
 
-    for threshold in thresholds:
-        preds, _ = get_predictions_with_threshold(model, loader, device, threshold)
-        pre = precision(labels, preds)
-        rec = recall(labels, preds)
-        f1 = F1(pre, rec)
-
-        if f1 > best_f1:
-            best_f1, best_threshold = f1, threshold
-
-    print(f"Best Threshold: {best_threshold} with F1-score: {best_f1:.4f}")
-    return best_threshold
 
 def main(args):
-    device = 'cuda' if args.cuda else 'cpu'
+    
+    if args.cuda:
+        device = 'cuda'
+    else:
+        device = 'cpu'
+
+    id2label = {0: 'other', 1: 'merged'}
+    label2id = {'other': 0, 'merged': 1}
     model_dir = 'KB/bert-base-swedish-cased'
 
-    tokenizer = AutoTokenizer.from_pretrained(model_dir)
-    model = AutoModelForSequenceClassification.from_pretrained(model_dir, num_labels=2).to(device)
-
-    # Load datasets
+    tok = AutoTokenizer.from_pretrained(model_dir)
+    model = AutoModelForSequenceClassification.from_pretrained(model_dir,
+                                                            num_labels=2,
+                                                            id2label=id2label,
+                                                            label2id=label2id).to(device)
+    
     train_data = pd.read_csv(f'{args.data_folder}/train_merged_stratified.csv')
     val_data = pd.read_csv(f'{args.data_folder}/val_merged_stratified.csv')
     test_data = pd.read_csv(f'{args.data_folder}/test_merged_stratified.csv')
 
-    train_input_ids, train_attention_masks, train_labels = encode(train_data, tokenizer)
-    val_input_ids, val_attention_masks, val_labels = encode(val_data, tokenizer)
-    test_input_ids, test_attention_masks, test_labels = encode(test_data, tokenizer)
-
+    train_input_ids, train_attention_masks, train_labels = encode(train_data, tok)
     train_dataset = TensorDataset(train_input_ids, train_attention_masks, train_labels)
+
+    val_input_ids, val_attention_masks, val_labels = encode(val_data, tok)
     val_dataset = TensorDataset(val_input_ids, val_attention_masks, val_labels)
+    
+    test_input_ids, test_attention_masks, test_labels = encode(test_data, tok)
     test_dataset = TensorDataset(test_input_ids, test_attention_masks, test_labels)
 
-    train_loader = DataLoader(train_dataset, shuffle=True, batch_size=16)
-    val_loader = DataLoader(val_dataset, shuffle=False, batch_size=16)
-    test_loader = DataLoader(test_dataset, shuffle=False, batch_size=16)
+    train_loader = DataLoader(train_dataset,
+                              shuffle=True,
+                              batch_size=batch_size,
+                              num_workers=num_workers)
+    val_loader = DataLoader(val_dataset,
+                            shuffle=False,
+                            batch_size=batch_size,
+                            num_workers=num_workers)
+    test_loader = DataLoader(test_dataset,
+                             shuffle=False,
+                             batch_size=batch_size,
+                             num_workers=num_workers)
+    
+    # Assigning class weights
+    class_counts = train_data['merged'].value_counts().to_dict()
+    total_samples = sum(class_counts.values())
+    class_weights = {label: total_samples / count for label, count in class_counts.items()}
+    print("Class Weights: ", class_weights)
 
-    class_weights = train_data['merged'].value_counts()
-    class_weights_tensor = torch.tensor([1.0 / class_weights[0], 1.0 / class_weights[1]], dtype=torch.float32).to(device)
+    class_weights_tensor = torch.tensor([class_weights[0], class_weights[1]]).to(device)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=5e-5)
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=5 * len(train_loader))
+    optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
 
-    for epoch in range(5):
-        print(f"Epoch {epoch + 1}/5")
+    num_training_steps = len(train_loader) * n_epochs
+    num_warmup_steps = num_training_steps // 10
+
+    # Linear warmup and step decay
+    scheduler = get_linear_schedule_with_warmup(optimizer=optimizer,
+                                                num_warmup_steps=num_warmup_steps,
+                                                num_training_steps=num_training_steps)
+
+    train_losses = []
+    val_losses = []
+    best_val_loss = float('inf')
+    tolerance = 0.01  # Minimum improvement in validation loss to be considered significant
+
+    count = 0
+    for epoch in range(n_epochs):
+        print(f"Start epoch {epoch} of {n_epochs}!")
+        train_loss = 0
         model.train()
-        for batch in tqdm(train_loader, total=len(train_loader)):
+
+        for i, batch in enumerate(tqdm(train_loader, total=len(train_loader))):
+            model.zero_grad()
+
             input_ids = batch[0].to(device)
-            attention_masks = batch[1].to(device)
+            input_mask = batch[1].to(device)
             labels = batch[2].to(device)
 
-            optimizer.zero_grad()
-            outputs = model(input_ids, attention_mask=attention_masks, labels=labels)
-            loss = F.cross_entropy(outputs.logits, labels, weight=class_weights_tensor)
+            output = model(input_ids,
+                           token_type_ids=None,
+                           attention_mask=input_mask,
+                           labels=labels)
+            loss = F.cross_entropy(output.logits, labels, weight=class_weights_tensor)
+            train_loss += loss.item()
+
             loss.backward()
             optimizer.step()
             scheduler.step()
 
-    best_threshold = tune_threshold(model, val_loader, device, val_data['merged'])
+        # Evaluation
+        val_loss, val_accuracy = evaluate(model, val_loader, device, class_weights_tensor)
+            
+        # Modified Early Stopping Logic
+        if val_loss < (best_val_loss - tolerance):  # Only consider significant improvements
+            print(f"Validation loss improved from {best_val_loss:.4f} to {val_loss:.4f}. Saving best model.")
+            best_val_loss = val_loss
+            best_model_state_dict = model.state_dict()
+            count = 0  # Reset patience count when improvement occurs
+        else:
+            count += 1
+            print(f"No improvement in validation loss for {count} epoch(s).")
+            if count >= args.patience:  # Use patience provided by command-line argument
+                print('Early Stopping triggered due to no significant improvement.')
+                break
 
-    for dataset_name, loader, labels in zip(['Train', 'Validation', 'Test'], [train_loader, val_loader, test_loader], [train_data['merged'], val_data['merged'], test_data['merged']]):
-        preds, _ = get_predictions_with_threshold(model, loader, device, best_threshold)
-        acc, pre, rec, f1 = get_metrics(labels, preds)
-        print(f"{dataset_name} Metrics - Accuracy: {acc:.4f}, Precision: {pre:.4f}, Recall: {rec:.4f}, F1-score: {f1:.4f}")
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
 
+        print(f"Epoch {epoch} done!")
+        print(f"Validation accuracy is {val_accuracy:.4f} and val loss is {val_loss:.4f}")
+
+    # Load the best model state
+    model.load_state_dict(best_model_state_dict)
+
+    train_eval_loader = DataLoader(train_dataset,
+                                   shuffle=False,
+                                   batch_size=batch_size,
+                                   num_workers=num_workers)
+    train_preds, train_logits = get_predictions(model, train_eval_loader, device)
+    train_preds = pd.Series(train_preds)
+    train_logits1 = pd.Series([x[0] for x in train_logits])
+    train_logits2 = pd.Series([x[1] for x in train_logits])
+    train_labels = train_data['merged']
+    
+    val_preds, val_logits = get_predictions(model, val_loader, device)
+    val_preds = pd.Series(val_preds)
+    val_logits1 = pd.Series([x[0] for x in val_logits])
+    val_logits2 = pd.Series([x[1] for x in val_logits])
+    val_labels = val_data['merged']
+    
+    test_preds, test_logits = get_predictions(model, test_loader, device)
+    test_preds = pd.Series(test_preds)
+    test_logits1 = pd.Series([x[0] for x in test_logits])
+    test_logits2 = pd.Series([x[1] for x in test_logits])
+    test_labels = test_data['merged']
+    
     if args.save_predictions:
-        train_data['preds'] = get_predictions_with_threshold(model, train_loader, device, best_threshold)[0]
-        val_data['preds'] = get_predictions_with_threshold(model, val_loader, device, best_threshold)[0]
-        test_data['preds'] = get_predictions_with_threshold(model, test_loader, device, best_threshold)[0]
+        train_data['preds'] = train_preds
+        val_data['preds'] = val_preds
+        test_data['preds'] = test_preds
 
-        train_data.to_csv(f'{args.save_folder}/train_predictions.csv', index=False)
-        val_data.to_csv(f'{args.save_folder}/val_predictions.csv', index=False)
+        train_data['logits1'] = train_logits1
+        val_data['logits1'] = val_logits1
+        test_data['logits1'] = test_logits1
+        train_data['logits2'] = train_logits2
+        val_data['logits2'] = val_logits2
+        test_data['logits2'] = test_logits2
+        
+        train_data.to_csv(f'{args.save_folder}/train_predictions.csv', index=False) 
+        val_data.to_csv(f'{args.save_folder}/val_predictions.csv', index=False) 
         test_data.to_csv(f'{args.save_folder}/test_predictions.csv', index=False)
-
+    
+    print(f'Train metrics: \n {get_metrics(train_labels, train_preds)}')
+    print(f'Validation metrics: \n {get_metrics(val_labels, val_preds)}')
+    print(f'Test metrics: \n {get_metrics(test_labels, test_preds)}')
+    
+    # Save the model
     model.save_pretrained(f'{args.save_folder}/merged_margin_prediction_model')
 
 if __name__ == "__main__":
