@@ -17,7 +17,7 @@ def encode(df, tokenizer):
     # For every sentence...
     for ix, row in df.iterrows():
         encoded_dict = tokenizer.encode_plus(
-                            row['text'],
+                            row['text_line'],
                             add_special_tokens = True,
                             max_length = 128,
                             truncation=True,
@@ -96,7 +96,7 @@ def get_metrics(labels, preds):
   f_1 = F1(pre, rec)
   return acc, pre, rec, f_1
 
-n_epochs = 1
+n_epochs = 5
 batch_size = 16
 num_workers = 2
 learning_rate = 0.00003
