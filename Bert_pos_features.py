@@ -42,7 +42,7 @@ def encode(df, tokenizer):
 
     return input_ids, attention_masks, labels
 # Check if evaluation is correct
-def evaluate(model, pos_loader,bert_loader, device):
+def evaluate(model, pos_loader,bert_loader, device,pos_weight):
     loss, accuracy = 0.0, []
     model.eval()
     for (pos_batch, bert_batch) in tqdm(zip(pos_loader, bert_loader), total=min(len(pos_loader), len(bert_loader))):
@@ -50,16 +50,15 @@ def evaluate(model, pos_loader,bert_loader, device):
         pos_labels = pos_batch[1].to(device)
         input_ids = bert_batch[0].to(device)
         input_mask = bert_batch[1].to(device)
-        bert_labels = bert_batch[2].to(device)
         with torch.no_grad():
             output = model(input_ids,input_mask,pos_features)
-        loss_function = torch.nn.BCEWithLogitsLoss()  
-        loss += loss_function(output, bert_labels)
+        loss_function = torch.nn.BCEWithLogitsLoss(pos_weight= torch.tensor([pos_weight]))        
+        loss += loss_function(output, pos_labels)
         # preds_batch = torch.argmax(output.logits, axis=1)
         # batch_acc = torch.mean((preds_batch == bert_labels).float())
         # accuracy.append(batch_acc)
-        preds_batch = (output > 0.0).long().squeeze()  # Converts probabilities to labels (0 or 1)
-        batch_acc = torch.mean((preds_batch == bert_labels).float())
+        preds_batch = (torch.sigmoid(output) > 0.5).long()  # Converts probabilities to labels (0 or 1)
+        batch_acc = torch.mean((preds_batch == pos_labels).float())
         accuracy.append(batch_acc)
 
     accuracy = torch.mean(torch.tensor(accuracy))
@@ -77,7 +76,7 @@ def get_predictions(model, pos_loader, bert_loader, device):
         with torch.no_grad():
             output = model(input_ids,input_mask,pos_features)
         #preds_batch = torch.argmax(output.logits, axis=1)
-        preds_batch = (output > 0.0).long()
+        preds_batch = (torch.sigmoid(output) > 0.5).long()
         #logits_batch = output.logits
         preds.extend(preds_batch.tolist())
         logits.extend(output.tolist())
@@ -111,30 +110,23 @@ learning_rate = 0.00003
 class BERTWithPositionalFeatures(nn.Module):
     def __init__(self):
         super().__init__()
-        # Pretrained Bert # later load here a self trained model
-        bert_model_name='KB/bert-base-swedish-cased'
+        # to use basic Bert:
+        # bert_model_name='KB/bert-base-swedish-cased'
+        
+        # Load pretrained
+        bert_model_name = "./swerik/output/output/margin_prediction_model/"
         self.bert = BertModel.from_pretrained(bert_model_name)
+        
         # # Set BERT layers to be trainable (all parameters by default)
         # for param in self.bert.parameters():
         #     param.requires_grad = True  # Enable gradient updates for all BERT layers
-        
-        # use Nikhitas pretrained model Release v1.0.0
-        # bert_config_path = "./swerik/margin_prediction_model/margin_prediction_model/config.json"
-        # bert_weights_path = "./swerik/margin_prediction_model/margin_prediction_model/model.safetensors"
-        # print(os.path.exists(bert_weights_path))      
-        # config = AutoConfig.from_pretrained(bert_config_path)  # Load configuration from JSON
-        # self.bert = BertModel(config)  # Initialize BERT with the loaded config
-        # bert_state_dict = load_file(bert_weights_path)  # Load weights from safetensors
-        # self.bert.load_state_dict(bert_state_dict)  # Load weights into the model
-        # OR
-        #self.bert = torch.load("./swerik/margin_prediction_model/margin_prediction_model/model.pt")
         
         # Pretrained PositionalFFNN
         self.positional_ffnn = PositionalFFNN()
         self.positional_ffnn.load_state_dict(torch.load(f'{args.model_folder}/positional_ffnn.pt',weights_only=True))
         self.positional_ffnn.eval()    # if the positional_ffnn should not be trained
         
-        # Trian positional model in here
+        # Train positional model in here
         # self.input_layer = nn.Linear(9, 180)
         # self.hidden_layers = nn.Sequential(
         #     nn.Linear(180, 180),
@@ -182,30 +174,29 @@ def main(args):
         device = 'cuda'
     else:
         device = 'cpu'
+        
     pos_features = ['posLeft', 'posUpper', 'posRight', 'posLower', "year", "relative_page_number","even_page", "second_chamber", "unicameral"]
 
     # Load your data
-    # train_data = pd.read_csv(f'{args.data_folder}/train_pos_set.csv')
-    # val_data = pd.read_csv(f'{args.data_folder}/val_pos_set.csv')
-    # test_data = pd.read_csv(f'{args.data_folder}/test_pos_set.csv')
-    train_data = pd.read_csv(f'{args.data_folder}/train_set_pos_stratified.csv')
-    val_data = pd.read_csv(f'{args.data_folder}/val_set_pos_stratified.csv')
-    test_data = pd.read_csv(f'{args.data_folder}/test_set_pos_stratified.csv')
+    train_data = pd.read_csv(f'{args.data_folder}/train_pos_set.csv')
+    val_data = pd.read_csv(f'{args.data_folder}/val_pos_set.csv')
+    test_data = pd.read_csv(f'{args.data_folder}/test_pos_set.csv')
     
     # Drop if nan values in positional features
-    train_data = train_data.dropna(subset=pos_features)
-    test_data = test_data.dropna(subset=pos_features)
-    val_data = val_data.dropna(subset=pos_features)
+    train_data = train_data.dropna(subset=pos_features,ignore_index=True)
+    test_data = test_data.dropna(subset=pos_features,ignore_index=True)
+    val_data = val_data.dropna(subset=pos_features,ignore_index=True)
     
     # Small set just to test if the script is running or not
-    # train_data=train_data.iloc[:1000,:]
-    # test_data=train_data.iloc[:150,:]
-    # val_data=val_data.iloc[:150,:]
+    # train_data=train_data.iloc[:100,:]
+    # test_data=train_data.iloc[:15,:]
+    # val_data=val_data.iloc[:15,:]
   
     # Prepare positional datasets for PositionalFFNN
     train_pos_dataset = create_tensordataset(train_data)
     test_pos_dataset = create_tensordataset(test_data)
     val_pos_dataset = create_tensordataset(val_data)
+    
     train_pos_loader = DataLoader(train_pos_dataset,
                             shuffle = True,
                             batch_size = batch_size,
@@ -246,7 +237,10 @@ def main(args):
 
     model = BERTWithPositionalFeatures()
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),lr = learning_rate)
-    criterion = nn.BCEWithLogitsLoss()  # Loss for binary classification
+    pos_weight = (np.sum(train_data["marginal_text"] == 0) / np.sum(train_data["marginal_text"] == 1))
+    pos_weight = 1
+    print("weight", pos_weight)
+    criterion = nn.BCEWithLogitsLoss(pos_weight= torch.tensor([pos_weight])) # Loss for binary classification
     
     train_losses = []
     val_losses = []
@@ -266,7 +260,6 @@ def main(args):
             pos_labels = pos_labels.to(device)
             input_ids = bert_batch[0].to(device)
             input_mask = bert_batch[1].to(device)
-            bert_labels = bert_batch[2].to(device)
 
             # Forward pass: get predictions from the model
             predictions = model(input_ids, text_attention_mask = input_mask, positional_features = pos_features)
@@ -280,7 +273,7 @@ def main(args):
             optimizer.step()
 
         # Evaluation
-        val_loss, val_accuracy = evaluate(model, val_pos_loader,val_bert_loader, device)
+        val_loss, val_accuracy = evaluate(model, val_pos_loader,val_bert_loader, device,pos_weight)
             
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -300,17 +293,24 @@ def main(args):
     
     # use epoch with lowest validation loss
     model.load_state_dict(best_model_state_dict) 
-    
-    train_preds, train_logits = get_predictions(model, train_pos_loader, train_bert_loader, device)
-    train_preds = pd.Series(train_preds)
+    train_eval_pos_loader = DataLoader(train_pos_dataset,
+                            shuffle = False,
+                            batch_size = batch_size,
+                            num_workers = num_workers)
+    train_eval_bert_loader = DataLoader(train_bert_dataset,
+                        shuffle = False,
+                        batch_size = batch_size,
+                        num_workers = num_workers)
+    train_preds, train_logits = get_predictions(model, train_eval_pos_loader, train_eval_bert_loader, device)
+    train_preds = pd.Series(train_preds).reset_index(drop=True)
     train_labels = train_data['marginal_text'].astype(int).reset_index(drop=True)
     
     val_preds, val_logits = get_predictions(model, val_pos_loader, val_bert_loader, device)
-    val_preds = pd.Series(val_preds)
+    val_preds = pd.Series(val_preds).reset_index(drop=True)
     val_labels = val_data['marginal_text'].astype(int).reset_index(drop=True)
     
     test_preds, test_logits = get_predictions(model, test_pos_loader, test_bert_loader, device)
-    test_preds = pd.Series(test_preds)
+    test_preds = pd.Series(test_preds).reset_index(drop=True)
     test_labels = test_data['marginal_text'].astype(int).reset_index(drop=True)
     
     if args.save_predictions:
@@ -331,7 +331,7 @@ def main(args):
     print(f'test metrics: \n {get_metrics(test_labels, test_preds)}')
     
     # save model locally
-    torch.save(model.state_dict(),f'{args.save_folder}/weig_strat_Bert_with_positional_ffnn.pt')
+    torch.save(model.state_dict(),f'{args.save_folder}/Bert_with_positional_ffnn.pt')
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)

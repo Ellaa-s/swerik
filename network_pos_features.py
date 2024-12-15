@@ -25,7 +25,7 @@ def evaluate(model, loader, device,pos_weight):
             preds_batch = (torch.sigmoid(output) > 0.5).long()#(output > 0.0).long().squeeze()  # Converts probabilities to labels (0 or 1)
             batch_acc = torch.mean((preds_batch == labels).float())
             accuracy.append(batch_acc)
-    avg_loss = torch.mean(loss)
+    avg_loss = loss / len(loader)
     avg_accuracy = torch.mean(torch.tensor(accuracy))
     return avg_loss, avg_accuracy
 
@@ -40,6 +40,7 @@ def get_predictions(model, loader, device):
         with torch.no_grad():  # Disable gradient computation for evaluation
             output = model(inputs)
         #print(f"output: {output}")
+        #print(output, torch.sigmoid(output))
         preds_batch = (torch.sigmoid(output) > 0.5).long() #(output > 0.0).long()#.squeeze()
         #preds_batch = torch.argmax(output, axis=1)
         #print(f"preds_batch {preds_batch}")
@@ -69,7 +70,7 @@ def get_metrics(labels, preds):
   return float(acc), float(pre), float(rec), float(f_1)
 
 n_epochs = 50
-batch_size = 20
+batch_size = 16
 num_workers = 2
 learning_rate = 0.00003
 
@@ -85,10 +86,6 @@ class PositionalFFNN(nn.Module):
             nn.GELU(),
             nn.Linear(180, 180),
             nn.GELU(),
-            # nn.Linear(180, 180),
-            # nn.GELU(),
-            # nn.Linear(180, 180),
-            # nn.GELU(),
             nn.Linear(180, 180),
             nn.GELU()
         )
@@ -102,6 +99,7 @@ class PositionalFFNN(nn.Module):
     
     # No output layer when combining the network with BERT
     def extract_features(self, x):
+        #x = x.float()
         x = self.input_layer(x)
         x = self.hidden_layers(x)
         return x
@@ -120,7 +118,7 @@ def create_tensordataset(dataset):
     #id_tensor = torch.tensor(encoded_ids, dtype=torch.long) 
     numerical_tensor = torch.tensor(dataset[num_features].values, dtype=torch.float32)
     boolean_tensor = torch.tensor(dataset[boolean_features].values, dtype=torch.bool) 
-    labels_tensor = torch.tensor(dataset["marginal_text"], dtype=torch.float) 
+    labels_tensor = torch.tensor(dataset["marginal_text"].values, dtype=torch.float) ## added .values
     
     # Concatenate the tensors into a single input tensor (shape=(N, 1 + num_features + boolean_features))
     input_tensor = torch.cat((numerical_tensor, boolean_tensor), dim=1)  #id_tensor.unsqueeze(1),
@@ -136,19 +134,20 @@ def main(args):
     pos_features = ['posLeft', 'posUpper', 'posRight', 'posLower', "year", "relative_page_number","even_page", "second_chamber", "unicameral"]
     
     # Load your data
-    train_data = pd.read_csv(f'{args.data_folder}/train_pos_set.csv')
-    val_data = pd.read_csv(f'{args.data_folder}/val_pos_set.csv')
-    test_data = pd.read_csv(f'{args.data_folder}/test_pos_set.csv')
+    train_data_not_filtered = pd.read_csv(f'{args.data_folder}/train_pos_set.csv')
+    val_data_not_filtered= pd.read_csv(f'{args.data_folder}/val_pos_set.csv')
+    test_data_not_filtered = pd.read_csv(f'{args.data_folder}/test_pos_set.csv')
     
-    train_data = train_data.dropna(subset=pos_features, ignore_index=True)
-    test_data = test_data.dropna(subset=pos_features, ignore_index=True)
-    val_data = val_data.dropna(subset=pos_features,ignore_index=True)
-    #dataset[num_features] = dataset[num_features].fillna(0)
+    train_data = train_data_not_filtered.dropna(subset=pos_features, ignore_index=True)
+    test_data = test_data_not_filtered.dropna(subset=pos_features, ignore_index=True)
+    val_data = val_data_not_filtered.dropna(subset=pos_features,ignore_index=True)
+    
+    #print(len(train_data), len(test_data),len(val_data))
+    train_data = train_data[train_data["merged"]==0.0].copy().reset_index(drop=True)
+    test_data = test_data.loc[test_data["merged"]==0.0].copy().reset_index(drop=True)
+    val_data = val_data.loc[val_data["merged"]==0.0].copy().reset_index(drop=True)
 
-    # Small set just to test if the script is running or not
-    #train_data=train_data.iloc[:1000,:]
-    #test_data=train_data.iloc[:150,:]
-    #val_data=val_data.iloc[:150,:]   
+    #print(len(train_data), len(test_data),len(val_data))
         
     train_dataset = create_tensordataset(train_data)
     test_dataset = create_tensordataset(test_data)
@@ -170,10 +169,10 @@ def main(args):
                             batch_size = batch_size,
                             num_workers = num_workers,
                             drop_last=False)
-
     model = PositionalFFNN()
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),lr = learning_rate)
     pos_weight = (np.sum(train_data["marginal_text"] == 0) / np.sum(train_data["marginal_text"] == 1))
+    pos_weight = 1
     print("weight", pos_weight)
     criterion = nn.BCEWithLogitsLoss(pos_weight= torch.tensor([pos_weight]))
 
@@ -201,7 +200,7 @@ def main(args):
             
             # Forward pass: get predictions from the model
             predictions = model(features)
-            loss = criterion(predictions.squeeze(), labels.float())
+            loss = criterion(predictions, labels.float()) ###.squeeze()
             train_loss += loss.item()
 
             # Backpropagation
@@ -230,17 +229,21 @@ def main(args):
     
     # use epoch with lowest validation loss
     model.load_state_dict(best_model_state_dict) 
-    
-    train_preds, train_logits = get_predictions(model, train_loader, device)
-    train_preds = pd.Series(train_preds)
+    train_eval_loader = DataLoader(train_dataset,
+                        shuffle = False,
+                        batch_size = batch_size,
+                        num_workers = num_workers,
+                        drop_last=False)
+    train_preds, train_logits = get_predictions(model, train_eval_loader, device)
+    train_preds = pd.Series(train_preds).reset_index(drop=True)
     train_labels = train_data['marginal_text'].astype(int).reset_index(drop=True)
-    
+
     val_preds, val_logits = get_predictions(model, val_loader, device)
-    val_preds = pd.Series(val_preds)
+    val_preds = pd.Series(val_preds).reset_index(drop=True)
     val_labels = val_data['marginal_text'].astype(int).reset_index(drop=True)
     
     test_preds, test_logits = get_predictions(model, test_loader, device)
-    test_preds = pd.Series(test_preds)
+    test_preds = pd.Series(test_preds).reset_index(drop=True)
     test_labels = test_data['marginal_text'].astype(int).reset_index(drop=True)
     
     # save predictions if flagged when running script
@@ -262,7 +265,7 @@ def main(args):
     print(f'test metrics: \n {get_metrics(test_labels, test_preds)}')
     
     # save model locally
-    torch.save(model.state_dict(),f'{args.save_folder}/positional_ffnn_new.pt')
+    torch.save(model.state_dict(),f'{args.save_folder}/positional_ffnn.pt')
 
     
 if __name__ == "__main__":
