@@ -2,9 +2,9 @@ import pandas as pd
 from sklearn.model_selection import StratifiedShuffleSplit
 
 # Load your sampled dataset
-train_data = pd.read_csv("/home/nikitha/swerik/data/train_set.csv")
-val_data = pd.read_csv("/home/nikitha/swerik/data/val_set.csv")
-test_data = pd.read_csv("/home/nikitha/swerik/data/test_set.csv")
+train_data = pd.read_csv("../data/train_set.csv")
+val_data = pd.read_csv("../data/val_set.csv")
+test_data = pd.read_csv("../data/test_set.csv")
 
 # Assume that 'label' is the column that contains the classes
 target_column = 'marginal_text'

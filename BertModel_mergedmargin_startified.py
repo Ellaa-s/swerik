@@ -99,7 +99,7 @@ def get_metrics(labels, preds):
     f_1 = F1(pre, rec)
     return acc, pre, rec, f_1
 
-n_epochs = 5
+n_epochs = 10
 batch_size = 16
 num_workers = 2
 learning_rate = 0.00003
@@ -268,10 +268,11 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data_folder", type=str, default='./data_stratified_sampling')
+    parser.add_argument("--data_folder", type=str, default='./data/data_stratified_sampling')
     parser.add_argument("--save_folder", type=str, default="./output")
     parser.add_argument("--cuda", action="store_true", help="Set this flag to run with CUDA.")
     parser.add_argument("--save_predictions", action="store_true", help="Set this flag to save predictions to csv.")
-    parser.add_argument("--patience", type=int, default=2, help="Number of epochs to wait for improvement before early stopping.")
+    parser.add_argument("--patience", type=int, default=5, help="Number of epochs to wait for improvement before early stopping.")
     args = parser.parse_args()
     main(args)
+

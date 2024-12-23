@@ -1,8 +1,9 @@
 import pandas as pd
 from sklearn.model_selection import StratifiedShuffleSplit
+import argparse
 
 # Load your sampled dataset
-data = pd.read_csv("/home/nikitha/swerik/data/data_annotated.csv")
+data = pd.read_csv(f'{args.data_folder}/data_annotated.csv')
 
 # Assume that 'label' is the column that contains the classes
 target_column = 'merged'
@@ -26,9 +27,9 @@ val_merged_data = val_merged_data.reset_index(drop=True)
 test_merged_data = test_merged_data.reset_index(drop=True)
 
 # # Save to CSV files
-train_merged_data.to_csv("/home/nikitha/swerik/data_stratified_sampling/train_merged_stratified.csv", index=False)
-val_merged_data.to_csv("/home/nikitha/swerik/data_stratified_sampling/val_merged_stratified.csv", index=False)
-test_merged_data.to_csv("/home/nikitha/swerik/data_stratified_sampling/test_merged_stratified.csv", index=False)
+train_merged_data.to_csv(f'{args.data_folder}/train_merged_stratified.csv', index=False)
+val_merged_data.to_csv(f'{args.data_folder}/val_merged_stratified.csv', index=False)
+test_merged_data.to_csv(f'{args.data_folder}/test_merged_stratified.csv', index=False)
 
 # Check class distribution to ensure stratification
 print("Class Distribution in merged margin Train Set:")
@@ -37,3 +38,7 @@ print("\nClass Distribution in merged margin Validation Set:")
 print(val_merged_data["merged"].value_counts())
 print("\nClass Distribution in merged margin Test Set:")
 print(test_merged_data["merged"].value_counts())
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--data_folder", type=str, default='./data/data_stratified_sampling')
