@@ -268,7 +268,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data_folder", type=str, default='./data_stratified_sampling')
+    parser.add_argument("--data_folder", type=str, default='./data/data_stratified_sampling')
     parser.add_argument("--save_folder", type=str, default="./output")
     parser.add_argument("--cuda", action="store_true", help="Set this flag to run with CUDA.")
     parser.add_argument("--save_predictions", action="store_true", help="Set this flag to save predictions to csv.")
