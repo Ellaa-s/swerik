@@ -36,7 +36,7 @@ class TextDataset(Dataset):
         return item
 
 # Load the test data
-test_data_path = "data_stratified_sampling/test_set_stratified.csv"  # Path to the test dataset
+test_data_path = "./data/data_stratified_sampling/test_set_stratified.csv"  # Path to the test dataset
 test_data = pd.read_csv(test_data_path)
 test_texts = test_data["text_line"].tolist()
 test_labels = test_data["marginal_text"].astype(int).tolist()
