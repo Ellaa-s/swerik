@@ -71,6 +71,7 @@
 
 
 **Data_scripts** : These folder consist of scripts used for dataset extraction and creation.
+**Models** : The models can be downloaded from the release page.
       
 
       
