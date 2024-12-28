@@ -16,9 +16,9 @@ model_dir = 'KB/bert-base-swedish-cased'
 tokenizer = AutoTokenizer.from_pretrained(model_dir)
 
 # Load datasets
-train_data = pd.read_csv('multiclassification_data_set/train_data_multi.csv')
-val_data = pd.read_csv('multiclassification_data_set/val_set_multi.csv')
-test_data = pd.read_csv('multiclassification_data_set/test_set_multi.csv')
+train_data = pd.read_csv('./data/multiclassification_data_set/train_data_multi.csv')
+val_data = pd.read_csv('./data/multiclassification_data_set/val_set_multi.csv')
+test_data = pd.read_csv('./data/multiclassification_data_set/test_set_multi.csv')
 
 # Function to encode dataset
 def encode(df, tokenizer, max_length=125):  # Reduced max_length to 64 to reduce memory usage
