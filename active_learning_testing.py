@@ -4,8 +4,8 @@ from transformers import BertTokenizer, BertForSequenceClassification
 from torch.utils.data import DataLoader, Dataset
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
-# Load the fine-tuned model and tokenizer
-model_dir = "fine_tuned_model"
+# Load the fine-tuned model and tokenizer (please change below model_dir as per path of the model output obatined by script correct_active_learning.py )
+model_dir = "fine_tuned_model" 
 tokenizer = BertTokenizer.from_pretrained(model_dir)
 model = BertForSequenceClassification.from_pretrained(model_dir)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
