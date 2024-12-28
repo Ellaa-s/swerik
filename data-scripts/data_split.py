@@ -5,7 +5,7 @@ import numpy as np
 #loading the data 
 data_main = pd.read_csv("./data.csv")
 
-#splitting the data into 3 parts
+#splitting the data into 3 parts (change the value of number of splits based on the requirement)
 split_value = np.array_split(data_main,3)
 
 output_data = "./data_partitioned"
