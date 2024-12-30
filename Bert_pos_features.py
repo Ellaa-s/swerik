@@ -1,3 +1,5 @@
+## Ella
+
 import torch
 import torch.nn as nn
 from transformers import BertModel, AutoConfig, AutoTokenizer, AutoModel
@@ -13,11 +15,11 @@ from safetensors.torch import safe_open
 
 
 def encode(df, tokenizer):
-    # Tokenize all of the sentences and map the tokens to thier word IDs.
+    # Tokenize all of the sentences and map the tokens to thier word IDs
     input_ids = []
     attention_masks = []
 
-    # For every sentence...
+    # For every sentence
     for ix, row in df.iterrows():
         encoded_dict = tokenizer.encode_plus(
                             row['text_line'],
@@ -41,6 +43,7 @@ def encode(df, tokenizer):
     labels = torch.tensor(df['marginal_text'].tolist()).float()
 
     return input_ids, attention_masks, labels
+
 # Check if evaluation is correct
 def evaluate(model, pos_loader,bert_loader, device,pos_weight):
     loss, accuracy = 0.0, []
@@ -54,9 +57,6 @@ def evaluate(model, pos_loader,bert_loader, device,pos_weight):
             output = model(input_ids,input_mask,pos_features)
         loss_function = torch.nn.BCEWithLogitsLoss(pos_weight= torch.tensor([pos_weight]))        
         loss += loss_function(output, pos_labels)
-        # preds_batch = torch.argmax(output.logits, axis=1)
-        # batch_acc = torch.mean((preds_batch == bert_labels).float())
-        # accuracy.append(batch_acc)
         preds_batch = (torch.sigmoid(output) > 0.5).long()  # Converts probabilities to labels (0 or 1)
         batch_acc = torch.mean((preds_batch == pos_labels).float())
         accuracy.append(batch_acc)
@@ -75,9 +75,7 @@ def get_predictions(model, pos_loader, bert_loader, device):
         labels = bert_batch[2].to(device)
         with torch.no_grad():
             output = model(input_ids,input_mask,pos_features)
-        #preds_batch = torch.argmax(output.logits, axis=1)
         preds_batch = (torch.sigmoid(output) > 0.5).long()
-        #logits_batch = output.logits
         preds.extend(preds_batch.tolist())
         logits.extend(output.tolist())
     
@@ -117,27 +115,10 @@ class BERTWithPositionalFeatures(nn.Module):
         bert_model_name = "./swerik/output/output/margin_prediction_model/"
         self.bert = BertModel.from_pretrained(bert_model_name)
         
-        # # Set BERT layers to be trainable (all parameters by default)
-        # for param in self.bert.parameters():
-        #     param.requires_grad = True  # Enable gradient updates for all BERT layers
-        
         # Pretrained PositionalFFNN
         self.positional_ffnn = PositionalFFNN()
         self.positional_ffnn.load_state_dict(torch.load(f'{args.model_folder}/positional_ffnn.pt',weights_only=True))
         self.positional_ffnn.eval()    # if the positional_ffnn should not be trained
-        
-        # Train positional model in here
-        # self.input_layer = nn.Linear(9, 180)
-        # self.hidden_layers = nn.Sequential(
-        #     nn.Linear(180, 180),
-        #     nn.GELU(),
-        #     nn.Linear(180, 180),
-        #     nn.GELU(),
-        #     nn.Linear(180, 180),
-        #     nn.GELU(),
-        #     nn.Linear(180, 180),
-        #     nn.GELU()
-        # )
         
         self.batch_norm = nn.BatchNorm1d(948)
         self.network = nn.Sequential(
@@ -155,10 +136,6 @@ class BERTWithPositionalFeatures(nn.Module):
         # Positional data through FFNN without output layer
         with torch.no_grad():
             pos_output = self.positional_ffnn.extract_features(positional_features)  # Shape: (batch_size, 180)
-
-        # Train Positional FFNN in here:
-        # pos_output = self.input_layer(positional_features)
-        # pos_output = self.hidden_layers(pos_output)
         
         # Concatenate BERT and positional features
         combined_output = torch.cat([bert_output, pos_output], dim=1)  # Shape: (batch_size, 948)
@@ -186,11 +163,6 @@ def main(args):
     train_data = train_data.dropna(subset=pos_features,ignore_index=True)
     test_data = test_data.dropna(subset=pos_features,ignore_index=True)
     val_data = val_data.dropna(subset=pos_features,ignore_index=True)
-    
-    # Small set just to test if the script is running or not
-    # train_data=train_data.iloc[:100,:]
-    # test_data=train_data.iloc[:15,:]
-    # val_data=val_data.iloc[:15,:]
   
     # Prepare positional datasets for PositionalFFNN
     train_pos_dataset = create_tensordataset(train_data)

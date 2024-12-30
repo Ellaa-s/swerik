@@ -1,3 +1,5 @@
+## Ella
+
 import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
@@ -21,8 +23,7 @@ def evaluate(model, loader, device,pos_weight):
             # Compute loss
             loss += loss_function(output, labels)
             # Compute predictions
-            #preds_batch = torch.argmax(output, axis=1)
-            preds_batch = (torch.sigmoid(output) > 0.5).long()#(output > 0.0).long().squeeze()  # Converts probabilities to labels (0 or 1)
+            preds_batch = (torch.sigmoid(output) > 0.5).long()
             batch_acc = torch.mean((preds_batch == labels).float())
             accuracy.append(batch_acc)
     avg_loss = loss / len(loader)
@@ -35,17 +36,11 @@ def get_predictions(model, loader, device):
     model.eval()
     for batch in tqdm(loader, total=len(loader)):
         inputs = batch[0].to(device)
-        #labels = batch[1].to(device)
         # Forward pass
         with torch.no_grad():  # Disable gradient computation for evaluation
             output = model(inputs)
-        #print(f"output: {output}")
-        #print(output, torch.sigmoid(output))
-        preds_batch = (torch.sigmoid(output) > 0.5).long() #(output > 0.0).long()#.squeeze()
-        #preds_batch = torch.argmax(output, axis=1)
-        #print(f"preds_batch {preds_batch}")
+        preds_batch = (torch.sigmoid(output) > 0.5).long() 
         preds.extend(preds_batch.tolist())
-        #preds.append(preds_batch)
         logits.extend(output.tolist())
     
     return preds, logits
@@ -99,7 +94,6 @@ class PositionalFFNN(nn.Module):
     
     # No output layer when combining the network with BERT
     def extract_features(self, x):
-        #x = x.float()
         x = self.input_layer(x)
         x = self.hidden_layers(x)
         return x
@@ -115,13 +109,12 @@ def create_tensordataset(dataset):
     dataset.loc[:, num_features] = scaler.transform(dataset[num_features])
     
     # Convert to tensors
-    #id_tensor = torch.tensor(encoded_ids, dtype=torch.long) 
     numerical_tensor = torch.tensor(dataset[num_features].values, dtype=torch.float32)
     boolean_tensor = torch.tensor(dataset[boolean_features].values, dtype=torch.bool) 
-    labels_tensor = torch.tensor(dataset["marginal_text"].values, dtype=torch.float) ## added .values
+    labels_tensor = torch.tensor(dataset["marginal_text"].values, dtype=torch.float)
     
     # Concatenate the tensors into a single input tensor (shape=(N, 1 + num_features + boolean_features))
-    input_tensor = torch.cat((numerical_tensor, boolean_tensor), dim=1)  #id_tensor.unsqueeze(1),
+    input_tensor = torch.cat((numerical_tensor, boolean_tensor), dim=1) 
 
     # Create the TensorDatasets
     return TensorDataset(input_tensor, labels_tensor)

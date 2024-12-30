@@ -1,3 +1,6 @@
+## Ella worked with it
+## parts are copied and adapted from the https://github.com/swerik-project/scripts repo 
+
 from pyriksdagen.utils import infer_metadata, XML_NS, remove_whitespace_from_sequence
 from alto import parse_file
 from alto import String as altoString
