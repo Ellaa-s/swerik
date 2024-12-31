@@ -59,8 +59,13 @@
    ```bash
      python3 active_learning_testing.py
   ```
- * Fine-tuned with positional features :   
-
+ * Fine-tuned with positional features: The BERT model with positional features is based on pretrained models.
+1. Download the model from the release KBBertmodel_stratifiedsampling_withweights and save it in the folder "./output/output/margin_prediction_model/". This model is trained by the script "Bert_model_weighted_stratified.py".
+2. Download the model from the release Positional_FFNN and save it in a folder in the repository. This model is trained by the script "network_pos_features.py".
+3. Run the following command to train the model combining the two pretrained models.
+```bash
+  python3 .\Bert_pos_features.py --data_folder ".\data\" --save_folder <path to save the model> --model_folder <path where the positional_ffnn model is saved> --save_predictions <if the resulting predictions should be saved>
+```
 ### Note : 
 - **Data** : This folder consists of all files related to the data. Below is a description of the subfolders contained within:
     - **data_partitioned**: Contains the dataset obtained from the script `data_split.py`.
