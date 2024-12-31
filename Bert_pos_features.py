@@ -60,9 +60,9 @@ def evaluate(model, pos_loader,bert_loader, device,pos_weight):
         preds_batch = (torch.sigmoid(output) > 0.5).long()  # Converts probabilities to labels (0 or 1)
         batch_acc = torch.mean((preds_batch == pos_labels).float())
         accuracy.append(batch_acc)
-
-    accuracy = torch.mean(torch.tensor(accuracy))
-    return loss, accuracy
+    avg_loss = loss / len(pos_loader)
+    avg_accuracy = torch.mean(torch.tensor(accuracy))
+    return avg_loss, avg_accuracy
 
 def get_predictions(model, pos_loader, bert_loader, device):
     preds = []
@@ -209,7 +209,7 @@ def main(args):
 
     model = BERTWithPositionalFeatures()
     optimizer = torch.optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()),lr = learning_rate)
-    pos_weight = (np.sum(train_data["marginal_text"] == 0) / np.sum(train_data["marginal_text"] == 1))
+    #pos_weight = (np.sum(train_data["marginal_text"] == 0) / np.sum(train_data["marginal_text"] == 1))
     pos_weight = 1
     print("weight", pos_weight)
     criterion = nn.BCEWithLogitsLoss(pos_weight= torch.tensor([pos_weight])) # Loss for binary classification
