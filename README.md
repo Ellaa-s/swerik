@@ -20,15 +20,15 @@
          python3 mergedmargins_sampling.py --data_folder <path to the data>
       ```
    *  Stratified sampling : The script used to create train-val-test with same class distribution for val and test data. This is used only if the class distribution count is not uniform for val and test data.
-     ```bash
+      ```bash
          python3 Dataset_test_stratifiysampling.py --data_folder 
-   ```
+      ```
    * Data exploration : This script is used to understand detailed information about the data.
-    ```bash
+     ```bash
          python3 Dataset_test_stratifiysampling.ipynb
-  ```
+     ```
    * Dataset for multiclassification : This script used to create dataset for multiclassifcation model.
-       ```bash
+     ```bash
          python3 Merged_margin_multiclassification.py --save_folder <path to save the folder> --data_folder <path to annotated dataset>
      ```  
 
@@ -36,7 +36,7 @@
 
 * Baseline KB-Bert model
 ```bash
-   python3 Bert_model_weighted_stratified.py --data_folder <path to the data> --save_folder <path to save output> --cuda <use if there is GPU> --save_predictions <path to save predictions> 
+   python3 Bert_train.py --data_folder <path to the data> --save_folder <path to save output> --cuda <use if there is GPU> --save_predictions <path to save predictions> 
 ```
 * Model fine-tuned with weights and stratified sampling for margin classification
 ```bash
