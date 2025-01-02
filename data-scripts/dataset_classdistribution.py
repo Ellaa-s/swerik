@@ -7,7 +7,7 @@ def main(args):
     val_data = pd.read_csv(f'{args.data_folder}/val_set.csv')
     test_data = pd.read_csv(f'{args.data_folder}/test_set.csv')
 
-    # Assume that 'label' is the column that contains the classes
+    # Assume that 'marginal_text' is the column that contains the classes
     target_column = 'marginal_text'
 
     # Check class distribution for the unsampled dataset
