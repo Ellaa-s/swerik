@@ -15,7 +15,7 @@ def encode(df, tokenizer):
     input_ids = []
     attention_masks = []
 
-    # For every sentence...
+    # For every sentence
     for ix, row in df.iterrows():
         encoded_dict = tokenizer.encode_plus(
                             row['text_line'],
@@ -30,7 +30,7 @@ def encode(df, tokenizer):
         # Add the encoded sentence to the list.
         input_ids.append(encoded_dict['input_ids'])
 
-        # And its attention mask (simply differentiates padding from non-padding).
+        # append its attention mask (simply differentiates padding from non-padding).
         attention_masks.append(encoded_dict['attention_mask'])
 
     # Convert the lists into tensors.
