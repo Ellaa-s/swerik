@@ -2,7 +2,7 @@ import pandas as pd
 import argparse
 
 def main(args):
-    # Load your sampled dataset
+    # Load the train,val and test dataset
     train_data = pd.read_csv(f'{args.data_folder}/train_set.csv')
     val_data = pd.read_csv(f'{args.data_folder}/val_set.csv')
     test_data = pd.read_csv(f'{args.data_folder}/test_set.csv')
