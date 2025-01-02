@@ -11,8 +11,9 @@
             - data_split.py : The dataset is large, hence this script can be used to split dataset. 
             - data_merge.py : The script is used to merge partitioned dataset that is annotated and save it in csv format as single file.
             - data_train_test_val.py : The script is used to split annotated dataset into train-val-test.
+            - data_pos_features.py: The script gets the positional features and saves them in a new file.
    
-   * Class distribution : The below script are used to give the distribution of classes for margins and merged-margins.
+   * Class distribution : The below scripts are used to give the distribution of classes for margins and merged-margins.
       ```bash
             python3 dataset_classdistribution.py --data_folder <path to the data>
       ```
@@ -23,10 +24,12 @@
       ```bash
          python3 Dataset_test_stratifiysampling.py --data_folder 
       ```
-   * Data exploration : This script is used to understand detailed information about the data.
+   * Data exploration : These scripts are used to understand detailed information about the data.
      ```bash
-         python3 Dataset_test_stratifiysampling.ipynb
-     ```
+         - Dataset_test_stratifiysampling.ipynb
+         - data_exploration.ipynb
+         - plot_pos_features.ipynb
+      ```
    * Dataset for multiclassification : This script used to create dataset for multiclassifcation model.
      ```bash
          python3 Merged_margin_multiclassification.py --save_folder <path to save the folder> --data_folder <path to annotated dataset>
@@ -46,7 +49,6 @@
 ```bash
    python3 BertModel_mergedmargin_startified.py --data_folder <path to the data> --save_folder <path to save output> --cuda <use if there is GPU> --save_predictions <path to save predictions> --patience <the patience value for to trigger early stopping>
 ```
-
 * Multiclassification model for classifying margins,merged-margins and other text
   ```bash
      python3 multiclassification.py --cude <to run with GPU> --save_folder <path to save the model>
