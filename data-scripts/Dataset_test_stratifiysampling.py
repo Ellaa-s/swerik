@@ -3,7 +3,7 @@ from sklearn.model_selection import StratifiedShuffleSplit
 import argparse
 
 def main(args):
-    # Load your sampled dataset
+    # Load the annotated dataset
     data = pd.read_csv(f'{args.data_folder}/data_annotated.csv')
 
     # target_column containing margin classification classes
