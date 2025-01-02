@@ -15,7 +15,7 @@ def encode(df, tokenizer):
     input_ids = []
     attention_masks = []
 
-    # For every sentence...
+    # For every sentence
     for ix, row in df.iterrows():
         encoded_dict = tokenizer.encode_plus(
                             row['text_line'],
@@ -199,7 +199,7 @@ def main(args):
         # Evaluation
         val_loss, val_accuracy = evaluate(model, val_loader, device, class_weights_tensor)
             
-        # Modified Early Stopping Logic
+        # Early Stopping criteria
         if val_loss < (best_val_loss - tolerance):  # Only consider significant improvements
             print(f"Validation loss improved from {best_val_loss:.4f} to {val_loss:.4f}. Saving best model.")
             best_val_loss = val_loss
