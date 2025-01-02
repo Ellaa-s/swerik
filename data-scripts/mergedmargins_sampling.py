@@ -5,7 +5,7 @@ import argparse
 # Load your sampled dataset
 data = pd.read_csv(f'{args.data_folder}/data_annotated.csv')
 
-# Assume that 'label' is the column that contains the classes
+# the target column containing merged-margin classification
 target_column = 'merged'
 
 # Stratified Shuffle Split to create train, validation, and test sets
