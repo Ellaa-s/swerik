@@ -1,3 +1,5 @@
+## Ella
+
 from pyriksdagen.download import LazyArchive
 from pyriksdagen.utils import XML_NS
 import argparse
@@ -15,10 +17,6 @@ parser = etree.XMLParser(remove_blank_text=True)
     
 # get filenames from file_paths (remove leading zeros in the filename)
 def get_filename_from_filepath(file_path):
-    #filename = file_path.rsplit("\\", 1)[-1].rsplit(".xml", 1)[0]
-    #parts = filename.split("--")
-    #parts[-1] = str(int(parts[-1]))
-    #cleaned_filename = "--".join(parts)
     cleaned_filename = file_path.split('/')[-2].replace('.jp2', '')
     print(cleaned_filename)
     return cleaned_filename
@@ -52,8 +50,6 @@ def main(args):
 
     # read in our data set we want to get positional features for
     our_data = pd.read_csv(args.input_file) #pd.read_csv("./swerik/data/test_set.csv")
-    # for easier debugging
-    #our_data = our_data[0:50]
     
     # get all the kb_paths and file_paths in our annotated data sets
     kb_paths = []
