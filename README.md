@@ -11,7 +11,7 @@
             - data_split.py : The dataset is large, hence this script can be used to split dataset. 
             - data_merge.py : The script is used to merge partitioned dataset that is annotated and save it in csv format as single file.
             - data_train_test_val.py : The script is used to split annotated dataset into train-val-test.
-            - data_pos_features.py: The script gets the positional features and saves them in a new file.
+            - data_pos_features.py: The script gets the positional features and saves them in a new file, uses functions from the prewritten script get_positional_features.py.
    
    * Class distribution : The below scripts are used to give the distribution of classes for margins and merged-margins.
       ```bash
