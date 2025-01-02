@@ -6,17 +6,17 @@ def main(args):
     # Load your sampled dataset
     data = pd.read_csv(f'{args.data_folder}/data_annotated.csv')
 
-    # Assume that 'label' is the column that contains the classes
+    # target_column containing margin classification classes
     target_column = 'marginal_text'
 
     # Stratified Shuffle Split to create train, validation, and test sets
-    # Step 1: Split data into train and temporary sets (temp contains validation + test)
+    # Split data into train and temporary sets
     split1 = StratifiedShuffleSplit(n_splits=1, test_size=0.3, random_state=42)
     for train_idx, temp_idx in split1.split(data, data[target_column]):
         train_data = data.iloc[train_idx]
         temp_data = data.iloc[temp_idx]
 
-    # Step 2: Split temporary set into validation and test sets
+    #Split temporary set into validation and test sets
     split2 = StratifiedShuffleSplit(n_splits=1, test_size=0.5, random_state=42)
     for val_idx, test_idx in split2.split(temp_data, temp_data[target_column]):
         val_data = temp_data.iloc[val_idx]
